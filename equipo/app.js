@@ -21,6 +21,9 @@ const ETAPAS_EMP = [
   { id: 'sponsor', label: 'Sponsor', hint: 'Activo: cuidar y renovar' },
   { id: 'pausa', label: 'No por ahora', hint: 'Dijo que no o pausado' },
 ];
+const NIVELES = { pez_gordo: 'Pez gordo', mediano: 'Mediano', local: 'Local' };
+const ACUERDOS = { pago: 'Pago', canje: 'Canje', mixto: 'Mixto' };
+const ordenLead = (a, b) => (b.puntaje || 0) - (a.puntaje || 0) || (rangoPrio[a.prioridad] ?? 3) - (rangoPrio[b.prioridad] ?? 3) || porNombre(a, b);
 const ESTADOS_MAIL = { borrador: 'Borrador en Gmail', enviado: 'Enviado', respondido: 'Respondió', rebotado: 'Rebotó', descartado: 'Descartado' };
 const PASOS = { 1: 'Mail 1', 2: 'Seguimiento', 3: 'Último mail' };
 const GMAIL_BORRADORES = 'https://mail.google.com/mail/u/?authuser=airedemar.uy@gmail.com#drafts';
@@ -29,7 +32,7 @@ const TABLAS = ['notas', 'empresas', 'contactos', 'envios', 'plantillas', 'paque
 
 const S = {
   yo: null, tab: 'produccion', subProd: 'tablero', subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
-  abierta: null, borrador: null, cargado: false, conCuenta: null,
+  abierta: null, borrador: null, cargado: false, conCuenta: null, nivel: '', acuerdo: '',
   notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
 };
 let canal = null;
@@ -277,6 +280,9 @@ $('#f-nota').addEventListener('submit', async (ev) => {
 /* ================= SPONSORS ================= */
 function banderas(e) {
   const f = [];
+  if (e.nivel === 'pez_gordo') f.push('<span class="chip ok">🐋 Pez gordo</span>');
+  if (e.acuerdo === 'canje') f.push('<span class="chip line">Canje</span>');
+  if (e.acuerdo === 'mixto') f.push('<span class="chip line">Mixto</span>');
   if (!contactosDe(e.id).some(c => c.email && !c.baja)) f.push('<span class="chip warn">Sin mail</span>');
   if (e.conflicto) f.push('<span class="chip alert">Conflicto</span>');
   if (e.verificar) f.push('<span class="chip warn">Verificar</span>');
@@ -307,10 +313,10 @@ function htmlEmbudo() {
   if (!S.empresas.length) return '<div class="vacio">Todavía no hay empresas. Sumá la primera con "+ Empresa".</div>';
   const etapas = S.etapa ? ETAPAS_EMP.filter(e => e.id === S.etapa) : ETAPAS_EMP;
   return `<div class="tablero">${etapas.map(et => {
-    const items = S.empresas.filter(e => e.etapa === et.id).sort((a, b) => (rangoPrio[a.prioridad] ?? 3) - (rangoPrio[b.prioridad] ?? 3) || porNombre(a, b));
+    const items = S.empresas.filter(e => e.etapa === et.id && (!S.nivel || e.nivel === S.nivel) && (!S.acuerdo || e.acuerdo === S.acuerdo)).sort(ordenLead);
     return `<div class="col ${et.id === 'sponsor' ? 'fin' : ''}"><h3><span>${esc(et.label)}</span><span>${items.length}</span></h3><p class="hint">${esc(et.hint)}</p><div class="cards">${
       items.length ? items.map(e => `<button class="card" data-empresa="${esc(e.id)}">
-        <span class="tt"><span>${esc(e.nombre)}</span><span class="prio ${esc(e.prioridad)}">${esc(e.prioridad)}</span></span>
+        <span class="tt"><span>${esc(e.nombre)}</span><span style="display:flex;gap:6px;align-items:center">${e.puntaje ? `<span class="nota num">${e.puntaje}/10</span>` : ''}<span class="prio ${esc(e.prioridad)}">${esc(e.prioridad)}</span></span></span>
         <span class="meta">${esc(e.rubro)}${e.responsable ? ' · ' + esc(e.responsable) : ''}</span>
         ${e.proximo_paso ? `<span class="meta">→ ${esc(e.proximo_paso)}</span>` : ''}
         <span class="flags">${banderas(e)}</span></button>`).join('') : '<div class="vacio">Nada en esta etapa.</div>'}</div></div>`;
@@ -321,22 +327,26 @@ function htmlEmpresas() {
   const rubros = [...new Set(S.empresas.map(e => e.rubro).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   const q = S.q.toLowerCase();
   const filas = S.empresas.filter(e => (!S.etapa || e.etapa === S.etapa) && (!S.rubro || e.rubro === S.rubro) && (!S.tipo || e.tipo === S.tipo)
-    && (!q || [e.nombre, e.rubro, e.encaje, e.notas].join(' ').toLowerCase().includes(q)))
-    .sort((a, b) => (rangoPrio[a.prioridad] ?? 3) - (rangoPrio[b.prioridad] ?? 3) || porNombre(a, b));
+    && (!S.nivel || e.nivel === S.nivel) && (!S.acuerdo || e.acuerdo === S.acuerdo)
+    && (!q || [e.nombre, e.rubro, e.zona, e.encaje, e.notas].join(' ').toLowerCase().includes(q)))
+    .sort(ordenLead);
   return `<div class="herr" style="margin-bottom:12px">
       <input type="search" id="f-q" placeholder="Buscar empresa, rubro o nota" value="${esc(S.q)}" aria-label="Buscar">
       <select id="f-rubro" aria-label="Rubro"><option value="">Todos los rubros</option>${rubros.map(r => `<option ${r === S.rubro ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>
+      <select id="f-nivel" aria-label="Nivel"><option value="">Todos los niveles</option>${Object.entries(NIVELES).map(([k, v]) => `<option value="${k}" ${S.nivel === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <select id="f-acuerdo" aria-label="Acuerdo"><option value="">Pago, canje o mixto</option>${Object.entries(ACUERDOS).map(([k, v]) => `<option value="${k}" ${S.acuerdo === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <select id="f-tipo" aria-label="Tipo"><option value="">Sponsors y prospectos</option><option value="sponsor" ${S.tipo === 'sponsor' ? 'selected' : ''}>Solo sponsors</option><option value="prospecto" ${S.tipo === 'prospecto' ? 'selected' : ''}>Solo prospectos</option></select>
       <span class="nota">${filas.length} de ${S.empresas.length}</span></div>
-    <div class="tabla"><table><thead><tr><th></th><th>Empresa</th><th>Rubro</th><th>Etapa</th><th>Contacto</th><th>Por qué encaja</th><th>Próximo</th></tr></thead>
+    <div class="tabla"><table><thead><tr><th></th><th>Puntaje</th><th>Empresa</th><th>Rubro</th><th>Nivel</th><th>Acuerdo</th><th>Etapa</th><th>Contacto</th><th>Por qué encaja</th></tr></thead>
     <tbody>${filas.map(e => {
       const c = contactosDe(e.id).find(c => c.email && !c.baja);
-      return `<tr data-empresa="${esc(e.id)}"><td><span class="prio ${esc(e.prioridad)}">${esc(e.prioridad)}</span></td>
-        <td><b>${esc(e.nombre)}</b>${e.conflicto ? ' <span class="chip alert">Conflicto</span>' : ''}</td><td>${esc(e.rubro)}</td>
+      return `<tr data-empresa="${esc(e.id)}"><td><span class="prio ${esc(e.prioridad)}">${esc(e.prioridad)}</span></td><td class="num"><b>${e.puntaje ?? '—'}</b></td>
+        <td><b>${esc(e.nombre)}</b>${e.conflicto ? ' <span class="chip alert">Conflicto</span>' : ''}${e.zona ? `<div class="nota">${esc(e.zona)}</div>` : ''}</td><td>${esc(e.rubro)}</td>
+        <td>${e.nivel === 'pez_gordo' ? '🐋 ' : ''}${esc(NIVELES[e.nivel] || '')}</td><td>${esc(ACUERDOS[e.acuerdo] || '')}</td>
         <td>${esc((ETAPAS_EMP.find(x => x.id === e.etapa) || {}).label || e.etapa)}</td>
-        <td>${c ? esc(c.nombre || c.email) : '<span class="chip warn">Sin mail</span>'}</td>
-        <td><div class="enc">${esc(e.encaje)}</div></td><td class="num">${esc(fechaCorta(e.proxima_fecha))}</td></tr>`;
-    }).join('') || '<tr><td colspan="7" class="nota">Ninguna empresa coincide con el filtro.</td></tr>'}</tbody></table></div>`;
+        <td>${c ? esc(c.nombre || c.email) : (e.contacto_publico ? `<span class="nota">${esc(e.contacto_publico)}</span>` : '<span class="chip warn">Sin mail</span>')}</td>
+        <td><div class="enc">${esc(e.encaje)}</div></td></tr>`;
+    }).join('') || '<tr><td colspan="9" class="nota">Ninguna empresa coincide con el filtro.</td></tr>'}</tbody></table></div>`;
 }
 
 function tarjetaMail(m, pendiente) {
@@ -410,6 +420,9 @@ function renderFicha(primera) {
       ${sel('prioridad', 'Prioridad', [['A', 'A · ir ya'], ['B', 'B · esta temporada'], ['C', 'C · más adelante']])}
       ${sel('responsable', 'Responsable', [['', '—'], ...responsables().map(r => [r, r])])}
       ${sel('tipo', 'Tipo', [['prospecto', 'Prospecto'], ['sponsor', 'Sponsor']])}
+      ${sel('nivel', 'Nivel', Object.entries(NIVELES))}
+      ${sel('acuerdo', 'Acuerdo', Object.entries(ACUERDOS))}
+      ${inp('puntaje', 'Puntaje (1 a 10)', 'number')}
       ${inp('proximo_paso', 'Próximo paso', 'text', true)}
       ${inp('proxima_fecha', 'Fecha', 'date')}
       ${inp('valor', 'Valor estimado (USD/mes)')}
@@ -418,6 +431,8 @@ function renderFicha(primera) {
         `<button type="button" class="op" data-formato="${esc(pk.id)}" aria-pressed="${(d.formatos || []).includes(pk.id)}">${esc(pk.nombre)}</button>`).join('')}</div></div>
       ${inp('conflicto', 'Conflicto de rubro (vacío si no hay)', 'text', true)}
       ${inp('rubro', 'Rubro')}${inp('zona', 'Zona')}${inp('web', 'Web')}${inp('instagram', 'Instagram')}
+      ${inp('contacto_publico', 'Contacto público (web, IG o teléfono del negocio)', 'text', true)}
+      ${inp('fuente', 'Fuente del dato', 'text', true)}${/^https?:/.test(d.fuente || '') ? `<a class="nota full" href="${esc(d.fuente)}" target="_blank" rel="noopener">Abrir la fuente</a>` : ''}
       ${area('notas', 'Notas')}
       <label class="f full" style="flex-direction:row;display:flex;gap:8px;align-items:center"><input type="checkbox" id="d-verificar" ${d.verificar ? 'checked' : ''}><span style="font-size:14px;color:var(--ink)">Datos a verificar</span></label>
     </div>
@@ -442,8 +457,13 @@ function nombreDe(email) { const m = S.equipo.find(x => x.email === email); retu
 
 async function guardarEmpresa() {
   const e = empresa(S.abierta), d = S.borrador, ch = {};
-  for (const k of ['nombre', 'etapa', 'prioridad', 'responsable', 'tipo', 'proximo_paso', 'proxima_fecha', 'valor', 'encaje', 'conflicto', 'web', 'instagram', 'rubro', 'zona', 'notas'])
+  for (const k of ['nombre', 'etapa', 'prioridad', 'responsable', 'tipo', 'nivel', 'acuerdo', 'proximo_paso', 'proxima_fecha', 'valor', 'encaje', 'conflicto', 'web', 'instagram', 'rubro', 'zona', 'notas', 'contacto_publico', 'fuente'])
     if ((d[k] ?? '') !== (e[k] ?? '')) ch[k] = k === 'proxima_fecha' ? (d[k] || null) : (d[k] ?? '');
+  if (String(d.puntaje ?? '') !== String(e.puntaje ?? '')) {
+    const n = d.puntaje === '' || d.puntaje == null ? null : Math.round(Number(d.puntaje));
+    if (n !== null && (isNaN(n) || n < 1 || n > 10)) { $('#msg-empresa').textContent = 'El puntaje va de 1 a 10.'; return; }
+    ch.puntaje = n;
+  }
   d.verificar = $('#d-verificar').checked;
   if (d.verificar !== e.verificar) ch.verificar = d.verificar;
   if (JSON.stringify(d.formatos || []) !== JSON.stringify(e.formatos || [])) ch.formatos = d.formatos || [];
@@ -578,6 +598,8 @@ document.addEventListener('change', (ev) => {
   if (ev.target.id === 'f-resp') { S.resp = ev.target.value; renderProduccion(); }
   if (ev.target.id === 'f-rubro') { S.rubro = ev.target.value; $('#sp-cuerpo').innerHTML = htmlEmpresas(); }
   if (ev.target.id === 'f-tipo') { S.tipo = ev.target.value; $('#sp-cuerpo').innerHTML = htmlEmpresas(); }
+  if (ev.target.id === 'f-nivel') { S.nivel = ev.target.value; $('#sp-cuerpo').innerHTML = htmlEmpresas(); }
+  if (ev.target.id === 'f-acuerdo') { S.acuerdo = ev.target.value; $('#sp-cuerpo').innerHTML = htmlEmpresas(); }
   if (ev.target.id === 'd-verificar') { const m = $('#msg-empresa'); if (m) m.textContent = 'Cambios sin guardar'; }
 });
 document.addEventListener('submit', async (ev) => {
