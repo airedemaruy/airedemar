@@ -532,6 +532,18 @@ async function llamarEquipo(body) {
 
 const OJO = '<button type="button" class="ojo" data-ojo aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ojo-abierto" d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle class="ojo-abierto" cx="12" cy="12" r="3"/><path class="ojo-tachado" d="M17.9 17.9A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 5.1A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a18.5 18.5 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2M1 1l22 22"/></svg></button>';
 
+async function guardarContrasena(btn) {
+  const u = btn.dataset.pass || btn.dataset.activar;
+  const inp = btn.closest('.acciones').querySelector('input[data-fpass]');
+  if (inp.value.length < 8) { toast('La contraseña tiene que tener al menos 8 caracteres.'); inp.focus(); return; }
+  const fila = S.equipo.find(m => m.usuario === u) || {};
+  const r = await llamarEquipo(btn.dataset.pass
+    ? { accion: 'contrasena', usuario: u, contrasena: inp.value }
+    : { accion: 'crear', usuario: u, nombre: fila.nombre, rol: fila.rol, contrasena: inp.value });
+  if (r.error) { toast(r.error); return; }
+  toast('Listo: ' + u + ' ya puede entrar con esa contraseña.'); S.conCuenta = null; render();
+}
+
 function renderEquipo() {
   const v = $('#v-equipo');
   if (!esAdmin()) { v.innerHTML = '<div class="vacio">Esta sección es solo para administradores.</div>'; return; }
@@ -543,7 +555,7 @@ function renderEquipo() {
       ${miembros.map(m => { const tiene = (S.conCuenta || []).includes(m.usuario);
         return `<tr><td><b>${esc(m.usuario)}</b></td><td>${esc(m.nombre)}</td><td>${m.rol === 'admin' ? 'Administrador' : 'Editor'}</td>
         <td>${tiene ? '<span class="chip ok">Puede entrar</span>' : '<span class="chip warn">Sin contraseña</span>'}</td>
-        <td><div class="acciones">${tiene ? `<button class="btn quiet small" data-pass="${esc(m.usuario)}">Cambiar contraseña</button>` : `<button class="btn small" data-activar="${esc(m.usuario)}">Crear contraseña</button>`}
+        <td><div class="acciones"><span class="pass-wrap fila-pass"><input type="password" data-fpass="${esc(m.usuario)}" placeholder="${tiene ? 'Nueva contraseña' : 'Contraseña (mín. 8)'}" autocomplete="new-password" minlength="8" aria-label="Contraseña para ${esc(m.usuario)}">${OJO}</span>${tiene ? `<button class="btn quiet small" data-pass="${esc(m.usuario)}">Cambiar contraseña</button>` : `<button class="btn small" data-activar="${esc(m.usuario)}">Crear contraseña</button>`}
         ${m.email !== S.yo.email ? `<button class="btn danger small" data-quitar="${esc(m.usuario)}">Quitar</button>` : ''}</div></td></tr>`; }).join('')}
       </tbody></table></div></div>
     <div class="seccion"><h2>Sumar a alguien</h2>
@@ -553,11 +565,7 @@ function renderEquipo() {
         <label class="f"><span>Contraseña inicial (mínimo 8)</span><span class="pass-wrap"><input id="m-pass" type="password" autocomplete="new-password" minlength="8" required>${OJO}</span></label>
         <label class="f"><span>Rol</span><select id="m-rol"><option value="editor">Editor</option><option value="admin">Administrador</option></select></label>
         <div class="full acciones"><button class="btn" type="submit">Crear usuario</button><span class="nota" id="msg-miembro"></span></div>
-      </form></div>
-    <dialog id="d-pass"><form id="f-pass" method="dialog"><h3 id="p-titulo">Contraseña</h3>
-      <label class="f"><span>Contraseña (mínimo 8 caracteres)</span><span class="pass-wrap"><input id="p-pass" type="password" autocomplete="new-password" minlength="8" required>${OJO}</span></label>
-      <div class="msg-error" id="p-error"></div>
-      <div class="acciones"><button class="btn" type="submit">Guardar</button><button class="btn quiet" type="button" id="p-cancelar">Cancelar</button></div></form></dialog>`;
+      </form></div>`;
 }
 
 /* ---------- eventos ---------- */
@@ -580,9 +588,8 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.descartar) { if (await escribir(sb.from('envios').update({ estado: 'descartado', notas: 'Descartado desde la app' }).eq('id', t.dataset.descartar), 'Descartado. El flujo lo borra de Gmail.')) { await cargar('envios'); render(); } return; }
   if (t.dataset.guardarTpl) { const id = t.dataset.guardarTpl; if (await escribir(sb.from('plantillas').update({ asunto: $('#tpl-a-' + id).value, cuerpo: $('#tpl-c-' + id).value }).eq('id', id), 'Plantilla guardada.')) await cargar('plantillas'); return; }
   if (t.dataset.guardarPrecio) { const id = t.dataset.guardarPrecio; if (await escribir(sb.from('paquetes').update({ precio: $('#precio-' + id).value.trim() }).eq('id', id), 'Precio guardado.')) await cargar('paquetes'); return; }
-  if (t.dataset.pass || t.dataset.activar) { const u = t.dataset.pass || t.dataset.activar; const dlg = $('#d-pass'); $('#f-pass').dataset.usuario = u; $('#f-pass').dataset.accion = t.dataset.pass ? 'contrasena' : 'activar'; $('#p-titulo').textContent = (t.dataset.pass ? 'Nueva contraseña para ' : 'Crear contraseña para ') + u; $('#p-error').textContent = ''; $('#p-pass').value = ''; $('#p-pass').type = 'password'; dlg.showModal(); return; }
+  if (t.dataset.pass || t.dataset.activar) { await guardarContrasena(t); return; }
   if (t.dataset.ojo !== undefined) { const i = t.parentElement.querySelector('input'), ver = i.type === 'password'; i.type = ver ? 'text' : 'password'; t.setAttribute('aria-pressed', String(ver)); const l = ver ? 'Ocultar contraseña' : 'Mostrar contraseña'; t.setAttribute('aria-label', l); t.title = l; return; }
-  if (t.id === 'p-cancelar') { $('#d-pass').close(); return; }
   if (t.dataset.quitar) {
     if (t.dataset.confirmar !== '1') { t.dataset.confirmar = '1'; t.textContent = '¿Quitar acceso?'; return; }
     const r = await llamarEquipo({ accion: 'quitar', usuario: t.dataset.quitar });
@@ -592,6 +599,7 @@ document.addEventListener('click', async (ev) => {
 });
 $('#velo').addEventListener('click', cerrarFicha);
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && S.abierta) cerrarFicha(); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.fpass) { ev.preventDefault(); ev.target.closest('.acciones').querySelector('[data-pass], [data-activar]').click(); } });
 document.addEventListener('input', (ev) => {
   const k = ev.target.dataset && ev.target.dataset.k;
   if (k && S.borrador) { S.borrador[k] = ev.target.value; const m = $('#msg-empresa'); if (m) m.textContent = 'Cambios sin guardar'; return; }
@@ -626,17 +634,6 @@ document.addEventListener('submit', async (ev) => {
     if (r.error) { msg.textContent = r.error; return; }
     toast('Usuario creado. Ya puede entrar.'); S.conCuenta = null; await cargar('equipo'); render();
   }
-  if (ev.target.id === 'f-pass') {
-    ev.preventDefault();
-    const f = ev.target, u = f.dataset.usuario;
-    const fila = S.equipo.find(m => m.usuario === u) || {};
-    const body = f.dataset.accion === 'activar'
-      ? { accion: 'crear', usuario: u, nombre: fila.nombre, rol: fila.rol, contrasena: $('#p-pass').value }
-      : { accion: 'contrasena', usuario: u, contrasena: $('#p-pass').value };
-    const r = await llamarEquipo(body);
-    if (r.error) { $('#p-error').textContent = r.error; return; }
-    $('#d-pass').close(); toast('Listo: ' + u + ' ya puede entrar con esa contraseña.'); S.conCuenta = null; render();
-  }
-});
+}); 
 
 iniciar();
