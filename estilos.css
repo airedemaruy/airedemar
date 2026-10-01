@@ -69,6 +69,10 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.1; ma
 .pantalla .tipo { font-family: var(--display); letter-spacing: .22em; text-transform: uppercase; font-size: 12px; color: var(--teal); }
 .pantalla h3 { font-size: 22px; margin: 8px 0 6px; }
 .pantalla p { margin: 0; color: var(--muted); font-size: 15px; }
+a.pantalla { display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: border-color .2s; }
+a.pantalla:hover { border-color: var(--teal); }
+.pantalla .ir { margin-top: auto; padding-top: 12px; font-size: 14px; color: var(--teal); }
+a.pantalla:hover .ir { text-decoration: underline; }
 
 /* Equipo */
 .equipo { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-top: 30px; }
@@ -76,7 +80,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.1; ma
 .persona h3 { font-size: 22px; margin-top: 14px; }
 .persona .rol { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--teal); margin-top: 4px; }
 .persona p { color: var(--muted); font-size: 15px; margin: 10px 0 0; }
-.capsula { margin-top: 28px; padding: 18px 20px; border-radius: 16px; background: var(--sea-soft); max-width: 720px; }
+.capsula { margin-top: 28px; padding: 18px 20px; border-radius: 16px; background: var(--sea-soft); max-width: 720px; display: flex; gap: 16px; align-items: center; }
+.capsula img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex: none; }
+.capsula p { margin: 0; }
 .capsula b { font-family: var(--display); letter-spacing: .06em; }
 
 /* Notas */
