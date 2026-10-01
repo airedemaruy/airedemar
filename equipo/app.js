@@ -530,6 +530,8 @@ async function llamarEquipo(body) {
   return data;
 }
 
+const OJO = '<button type="button" class="ojo" data-ojo aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ojo-abierto" d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle class="ojo-abierto" cx="12" cy="12" r="3"/><path class="ojo-tachado" d="M17.9 17.9A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 5.1A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a18.5 18.5 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2M1 1l22 22"/></svg></button>';
+
 function renderEquipo() {
   const v = $('#v-equipo');
   if (!esAdmin()) { v.innerHTML = '<div class="vacio">Esta sección es solo para administradores.</div>'; return; }
@@ -548,12 +550,12 @@ function renderEquipo() {
       <form class="campos" id="f-miembro" style="max-width:640px">
         <label class="f"><span>Usuario (minúsculas, sin espacios)</span><input id="m-usuario" autocapitalize="none" spellcheck="false" required pattern="[a-z0-9._\\-]{2,30}"></label>
         <label class="f"><span>Nombre</span><input id="m-nombre" required></label>
-        <label class="f"><span>Contraseña inicial (mínimo 8)</span><input id="m-pass" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label class="f"><span>Contraseña inicial (mínimo 8)</span><span class="pass-wrap"><input id="m-pass" type="password" autocomplete="new-password" minlength="8" required>${OJO}</span></label>
         <label class="f"><span>Rol</span><select id="m-rol"><option value="editor">Editor</option><option value="admin">Administrador</option></select></label>
         <div class="full acciones"><button class="btn" type="submit">Crear usuario</button><span class="nota" id="msg-miembro"></span></div>
       </form></div>
     <dialog id="d-pass"><form id="f-pass" method="dialog"><h3 id="p-titulo">Contraseña</h3>
-      <label class="f"><span>Contraseña (mínimo 8 caracteres)</span><input id="p-pass" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="f"><span>Contraseña (mínimo 8 caracteres)</span><span class="pass-wrap"><input id="p-pass" type="password" autocomplete="new-password" minlength="8" required>${OJO}</span></label>
       <div class="msg-error" id="p-error"></div>
       <div class="acciones"><button class="btn" type="submit">Guardar</button><button class="btn quiet" type="button" id="p-cancelar">Cancelar</button></div></form></dialog>`;
 }
@@ -578,7 +580,8 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.descartar) { if (await escribir(sb.from('envios').update({ estado: 'descartado', notas: 'Descartado desde la app' }).eq('id', t.dataset.descartar), 'Descartado. El flujo lo borra de Gmail.')) { await cargar('envios'); render(); } return; }
   if (t.dataset.guardarTpl) { const id = t.dataset.guardarTpl; if (await escribir(sb.from('plantillas').update({ asunto: $('#tpl-a-' + id).value, cuerpo: $('#tpl-c-' + id).value }).eq('id', id), 'Plantilla guardada.')) await cargar('plantillas'); return; }
   if (t.dataset.guardarPrecio) { const id = t.dataset.guardarPrecio; if (await escribir(sb.from('paquetes').update({ precio: $('#precio-' + id).value.trim() }).eq('id', id), 'Precio guardado.')) await cargar('paquetes'); return; }
-  if (t.dataset.pass || t.dataset.activar) { const u = t.dataset.pass || t.dataset.activar; const dlg = $('#d-pass'); $('#f-pass').dataset.usuario = u; $('#f-pass').dataset.accion = t.dataset.pass ? 'contrasena' : 'activar'; $('#p-titulo').textContent = (t.dataset.pass ? 'Nueva contraseña para ' : 'Crear contraseña para ') + u; $('#p-error').textContent = ''; $('#p-pass').value = ''; dlg.showModal(); return; }
+  if (t.dataset.pass || t.dataset.activar) { const u = t.dataset.pass || t.dataset.activar; const dlg = $('#d-pass'); $('#f-pass').dataset.usuario = u; $('#f-pass').dataset.accion = t.dataset.pass ? 'contrasena' : 'activar'; $('#p-titulo').textContent = (t.dataset.pass ? 'Nueva contraseña para ' : 'Crear contraseña para ') + u; $('#p-error').textContent = ''; $('#p-pass').value = ''; $('#p-pass').type = 'password'; dlg.showModal(); return; }
+  if (t.dataset.ojo !== undefined) { const i = t.parentElement.querySelector('input'), ver = i.type === 'password'; i.type = ver ? 'text' : 'password'; t.setAttribute('aria-pressed', String(ver)); const l = ver ? 'Ocultar contraseña' : 'Mostrar contraseña'; t.setAttribute('aria-label', l); t.title = l; return; }
   if (t.id === 'p-cancelar') { $('#d-pass').close(); return; }
   if (t.dataset.quitar) {
     if (t.dataset.confirmar !== '1') { t.dataset.confirmar = '1'; t.textContent = '¿Quitar acceso?'; return; }
