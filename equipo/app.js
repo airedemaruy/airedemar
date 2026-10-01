@@ -30,8 +30,9 @@ const GMAIL_BORRADORES = 'https://mail.google.com/mail/u/?authuser=airedemar.uy@
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const TABLAS = ['notas', 'empresas', 'contactos', 'envios', 'plantillas', 'paquetes', 'config', 'metricas', 'equipo'];
 
+function vistaGuardada() { try { return localStorage.getItem('calVista') === 'lista' ? 'lista' : 'clasico'; } catch (_) { return 'clasico'; } }
 const S = {
-  yo: null, tab: 'produccion', subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
+  yo: null, tab: 'produccion', calVista: vistaGuardada(), calMes: new Date(), subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
   abierta: null, borrador: null, cargado: false, conCuenta: null, claves: {}, nivel: '', acuerdo: '',
   notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
 };
@@ -179,14 +180,18 @@ function tarjetaNota(n) {
   </div>`;
 }
 
-function barraNotas() {
+function barraNotas(izq = '') {
   const opcResp = ['', ...new Set([...responsables(), ...S.notas.map(n => n.responsable).filter(Boolean)])];
-  return `<div class="barra"><span></span>
+  return `<div class="barra">${izq || '<span></span>'}
       <div class="herr">
         <select id="f-resp" aria-label="Responsable">${opcResp.map(r => `<option value="${esc(r)}" ${r === S.resp ? 'selected' : ''}>${r ? esc(r) : 'Todo el equipo'}</option>`).join('')}</select>
         <button class="btn" data-nueva-nota>+ Nueva nota</button>
       </div>
     </div>`;
+}
+
+function chipNota(n) {
+  return `<div class="chip-nota e${n.etapa}" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}" title="${esc(n.titulo)}${n.responsable ? ' · ' + esc(n.responsable) : ''}">${esc(n.titulo)}</div>`;
 }
 
 function renderProduccion() {
@@ -212,19 +217,39 @@ function renderProduccion() {
 function renderCalendario() {
   const v = $('#v-calendario');
   const lista = notasFiltradas();
-  const prox = proximoDomingo(), proxIso = iso(prox), dias = new Set();
-  for (let k = -3; k <= 6; k++) { const d = new Date(prox); d.setDate(d.getDate() + 7 * k); dias.add(iso(d)); }
-  lista.forEach(n => n.emision && dias.add(n.emision));
-  let html = [...dias].sort().map(s => {
-    const items = lista.filter(n => n.emision === s), d = parse(s);
-    const pasado = s < proxIso, esProx = s === proxIso;
-    return `<div class="dom ${pasado ? 'pasado' : ''} ${esProx ? 'proximo' : ''}" data-soltar-fecha="${s}">
-      <div class="d"><b>${d.getDate()} ${MESES[d.getMonth()]}</b><span>${d.getFullYear()} · 17:30${d.getDay() !== 0 ? ' · no es domingo' : ''}</span>${esProx ? '<br><em>Este domingo</em>' : ''}</div>
-      <div class="items">${items.length ? items.map(tarjetaNota).join('') : `<div class="nota">${pasado ? 'Sin notas registradas.' : 'Sin notas asignadas todavía.'}</div>`}</div></div>`;
-  }).join('');
+  const clasico = S.calVista === 'clasico';
+  const mes = new Date(S.calMes.getFullYear(), S.calMes.getMonth(), 1);
+  const nombreMes = mes.toLocaleDateString('es-UY', { month: 'long', year: 'numeric' }).replace(/^./, c => c.toUpperCase());
+  const izq = `<div class="herr"><div class="sub" role="tablist"><button data-calvista="clasico" aria-selected="${clasico}">Clásico</button><button data-calvista="lista" aria-selected="${!clasico}">Lista</button></div>` +
+    (clasico ? `<div class="mes-nav"><button class="btn quiet small" data-calmes="-1" aria-label="Mes anterior">‹</button><b class="mes-nombre">${esc(nombreMes)}</b><button class="btn quiet small" data-calmes="1" aria-label="Mes siguiente">›</button><button class="btn quiet small" data-calmes="hoy">Hoy</button></div>` : '') + '</div>';
   const sin = lista.filter(n => !n.emision && n.etapa < 5);
-  html += `<div class="dom" data-soltar-fecha=""><div class="d"><b>Sin fecha</b><span>${sin.length} nota${sin.length === 1 ? '' : 's'}</span></div><div class="items">${sin.length ? sin.map(tarjetaNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
-  v.innerHTML = `${barraNotas()}<div class="cal">${html}</div>`;
+  let cuerpo;
+  if (clasico) {
+    const offset = (mes.getDay() + 6) % 7, total = Math.ceil((offset + new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate()) / 7) * 7;
+    const hoy = hoyIso();
+    const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => `<div class="cab">${d}</div>`).join('');
+    const celdas = Array.from({ length: total }, (_, i) => {
+      const d = new Date(mes.getFullYear(), mes.getMonth(), 1 - offset + i), s = iso(d);
+      const items = lista.filter(n => n.emision === s);
+      return `<div class="dia ${d.getMonth() !== mes.getMonth() ? 'fuera' : ''} ${s === hoy ? 'hoy' : ''} ${d.getDay() === 0 ? 'domingo' : ''}" data-soltar-fecha="${s}"><span class="num">${d.getDate()}</span>${items.map(chipNota).join('')}</div>`;
+    }).join('');
+    cuerpo = `<div class="grilla-wrap"><div class="grilla">${dias}${celdas}</div></div>
+      <div class="sinfecha" data-soltar-fecha=""><h4>Sin fecha <span>${sin.length}</span></h4><div class="items">${sin.length ? sin.map(chipNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
+  } else {
+    const prox = proximoDomingo(), proxIso = iso(prox), dias = new Set();
+    for (let k = -3; k <= 6; k++) { const d = new Date(prox); d.setDate(d.getDate() + 7 * k); dias.add(iso(d)); }
+    lista.forEach(n => n.emision && dias.add(n.emision));
+    let html = [...dias].sort().map(s => {
+      const items = lista.filter(n => n.emision === s), d = parse(s);
+      const pasado = s < proxIso, esProx = s === proxIso;
+      return `<div class="dom ${pasado ? 'pasado' : ''} ${esProx ? 'proximo' : ''}" data-soltar-fecha="${s}">
+        <div class="d"><b>${d.getDate()} ${MESES[d.getMonth()]}</b><span>${d.getFullYear()} · 17:30${d.getDay() !== 0 ? ' · no es domingo' : ''}</span>${esProx ? '<br><em>Este domingo</em>' : ''}</div>
+        <div class="items">${items.length ? items.map(tarjetaNota).join('') : `<div class="nota">${pasado ? 'Sin notas registradas.' : 'Sin notas asignadas todavía.'}</div>`}</div></div>`;
+    }).join('');
+    html += `<div class="dom" data-soltar-fecha=""><div class="d"><b>Sin fecha</b><span>${sin.length} nota${sin.length === 1 ? '' : 's'}</span></div><div class="items">${sin.length ? sin.map(tarjetaNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
+    cuerpo = `<div class="cal">${html}</div>`;
+  }
+  v.innerHTML = barraNotas(izq) + cuerpo;
 }
 
 /* ---------- arrastrar tarjetas: en el tablero cambia la etapa, en el calendario el domingo ---------- */
@@ -237,7 +262,7 @@ async function moverNota(id, cambio) {
 }
 let arrastrando = null;
 document.addEventListener('dragstart', (ev) => {
-  const c = ev.target.closest && ev.target.closest('.card[data-nota]'); if (!c) return;
+  const c = ev.target.closest && ev.target.closest('[draggable="true"][data-nota]'); if (!c) return;
   arrastrando = c.dataset.nota; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', arrastrando);
   setTimeout(() => c.classList.add('arrastrando'), 0);
 });
@@ -603,11 +628,13 @@ function renderEquipo() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async (ev) => {
-  const t = ev.target.closest('button, tr[data-empresa], .card[data-nota]');
+  const t = ev.target.closest('button, tr[data-empresa], [data-nota]');
   if (!t || t.closest('#f-nota') || t.closest('#f-login') || t.closest('#f-cuenta')) return;
   if (t.dataset.tab) { S.tab = t.dataset.tab; render(); return; }
   if (t.dataset.subsp) { S.subSp = t.dataset.subsp; render(); return; }
   if (t.dataset.nota) { abrirNota(t.dataset.nota); return; }
+  if (t.dataset.calvista) { S.calVista = t.dataset.calvista; try { localStorage.setItem('calVista', S.calVista); } catch (_) {} render(); return; }
+  if (t.dataset.calmes) { S.calMes = t.dataset.calmes === 'hoy' ? new Date() : new Date(S.calMes.getFullYear(), S.calMes.getMonth() + Number(t.dataset.calmes), 1); render(); return; }
   if (t.hasAttribute('data-nueva-nota')) { abrirNota(null); return; }
   if (t.dataset.etapaEmp) { S.etapa = S.etapa === t.dataset.etapaEmp ? null : t.dataset.etapaEmp; render(); return; }
   if (t.dataset.empresa) { abrirFicha(t.dataset.empresa); return; }
@@ -632,7 +659,7 @@ document.addEventListener('click', async (ev) => {
 $('#velo').addEventListener('click', cerrarFicha);
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && S.abierta) cerrarFicha(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.fpass) { ev.preventDefault(); ev.target.closest('.acciones').querySelector('[data-pass], [data-activar]').click(); } });
-document.addEventListener('keydown', (ev) => { const c = ev.target.classList && ev.target.classList.contains('card') && ev.target.dataset.nota; if (c && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); abrirNota(c); } });
+document.addEventListener('keydown', (ev) => { const c = ev.target.dataset && ev.target.getAttribute('role') === 'button' && ev.target.dataset.nota; if (c && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); abrirNota(c); } });
 document.addEventListener('input', (ev) => {
   const k = ev.target.dataset && ev.target.dataset.k;
   if (k && S.borrador) { S.borrador[k] = ev.target.value; const m = $('#msg-empresa'); if (m) m.textContent = 'Cambios sin guardar'; return; }

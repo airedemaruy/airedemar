@@ -195,3 +195,23 @@ dialog h3 { font-size: 22px; }
 .barras .fill.hi { background: var(--teal); }
 .barras .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
 @media (prefers-reduced-motion: no-preference) { .card, .btn, tbody td { transition: border-color .15s, background-color .15s; } }
+
+/* calendario clásico */
+.mes-nav { display: flex; align-items: center; gap: 6px; }
+.mes-nombre { font-family: var(--display); min-width: 150px; text-align: center; font-size: 17px; }
+.grilla-wrap { overflow-x: auto; }
+.grilla { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; min-width: 770px; }
+.grilla .cab { background: var(--surface-2); padding: 7px 8px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.dia { background: var(--surface); min-height: 104px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dia .num { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dia.fuera { background: var(--surface-2); opacity: .6; }
+.dia.domingo .num { color: var(--teal); font-weight: 600; }
+.dia.hoy .num { background: var(--teal); color: var(--teal-ink); border-radius: 99px; padding: 1px 7px; align-self: flex-start; }
+.dia.sobre, .sinfecha.sobre { outline: 2px dashed var(--teal); outline-offset: -2px; }
+.chip-nota { background: var(--sea-soft); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 6px; padding: 3px 7px; font-size: 12.5px; line-height: 1.3; cursor: grab; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-nota:hover { border-color: var(--teal); }
+.chip-nota.arrastrando { opacity: .4; }
+.chip-nota.e5 { border-left-color: var(--ok); }
+.sinfecha { margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
+.sinfecha h4 { font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); display: flex; gap: 8px; margin-bottom: 8px; }
+.sinfecha .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
