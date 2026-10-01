@@ -31,7 +31,7 @@ const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'o
 const TABLAS = ['notas', 'empresas', 'contactos', 'envios', 'plantillas', 'paquetes', 'config', 'metricas', 'equipo'];
 
 const S = {
-  yo: null, tab: 'produccion', subProd: 'tablero', subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
+  yo: null, tab: 'produccion', subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
   abierta: null, borrador: null, cargado: false, conCuenta: null, claves: {}, nivel: '', acuerdo: '',
   notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
 };
@@ -154,8 +154,9 @@ function render() {
   document.querySelectorAll('.nav button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
   const pend = S.envios.filter(e => e.estado === 'borrador').length;
   $('#t-sponsors').innerHTML = 'Sponsors' + (pend ? `<span class="badge">${pend}</span>` : '');
-  for (const t of ['produccion', 'sponsors', 'metricas', 'equipo']) $('#v-' + t).hidden = S.tab !== t;
+  for (const t of ['produccion', 'calendario', 'sponsors', 'metricas', 'equipo']) $('#v-' + t).hidden = S.tab !== t;
   if (S.tab === 'produccion') renderProduccion();
+  if (S.tab === 'calendario') renderCalendario();
   if (S.tab === 'sponsors') renderSponsors();
   if (S.tab === 'metricas') renderMetricas();
   if (S.tab === 'equipo') renderEquipo();
@@ -169,13 +170,23 @@ function tarjetaNota(n) {
   const fecha = n.emision ? `<span class="chip line">dom ${esc(fechaCorta(n.emision))}</span>` : '<span class="chip warn">sin fecha</span>';
   const pubs = `<span class="pubs"><span class="pub ${n.tv ? 'on' : ''}">TV</span><span class="pub ${n.ig ? 'on' : ''}">IG</span><span class="pub ${n.yt ? 'on' : ''}">YT</span></span>`;
   const faltan = n.etapa >= 5 ? [!n.ig && 'falta IG', !n.yt && 'falta YouTube'].filter(Boolean).map(x => `<span class="chip alert">${x}</span>`).join('') : '';
-  return `<button class="card" data-nota="${esc(n.id)}">
+  return `<div class="card" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}">
     <span class="tt"><span>${esc(n.titulo)}</span></span>
     ${n.protagonista ? `<span class="meta">${esc(n.protagonista)}</span>` : ''}
     <span class="flags">${fecha}${pubs}${n.responsable ? `<span class="chip">${esc(n.responsable)}</span>` : ''}${n.duracion ? `<span class="chip line">${esc(n.duracion)}</span>` : ''}</span>
     ${faltan ? `<span class="flags">${faltan}</span>` : ''}
     ${n.pendientes ? `<span class="pend">${esc(n.pendientes)}</span>` : ''}
-  </button>`;
+  </div>`;
+}
+
+function barraNotas() {
+  const opcResp = ['', ...new Set([...responsables(), ...S.notas.map(n => n.responsable).filter(Boolean)])];
+  return `<div class="barra"><span></span>
+      <div class="herr">
+        <select id="f-resp" aria-label="Responsable">${opcResp.map(r => `<option value="${esc(r)}" ${r === S.resp ? 'selected' : ''}>${r ? esc(r) : 'Todo el equipo'}</option>`).join('')}</select>
+        <button class="btn" data-nueva-nota>+ Nueva nota</button>
+      </div>
+    </div>`;
 }
 
 function renderProduccion() {
@@ -188,40 +199,60 @@ function renderProduccion() {
     [ns.filter(n => !n.emision && n.etapa < 5).length, 'sin fecha de emisión', ns.some(n => !n.emision && n.etapa < 5)],
     [ns.filter(n => n.etapa >= 5 && !n.yt).length, 'salieron y faltan en YouTube', ns.some(n => n.etapa >= 5 && !n.yt)],
   ];
-  const opcResp = ['', ...new Set([...responsables(), ...S.notas.map(n => n.responsable).filter(Boolean)])];
+  const lista = notasFiltradas();
   v.innerHTML = `
     <div class="tira">${stats.map(([n, l, a]) => `<div class="${a ? 'alerta' : ''}"><span class="n">${n}</span><span class="l">${l}</span></div>`).join('')}</div>
-    <div class="barra">
-      <div class="sub" role="tablist"><button data-subprod="tablero" aria-selected="${S.subProd === 'tablero'}">Tablero</button><button data-subprod="calendario" aria-selected="${S.subProd === 'calendario'}">Calendario</button></div>
-      <div class="herr">
-        <select id="f-resp" aria-label="Responsable">${opcResp.map(r => `<option value="${esc(r)}" ${r === S.resp ? 'selected' : ''}>${r ? esc(r) : 'Todo el equipo'}</option>`).join('')}</select>
-        <button class="btn" data-nueva-nota>+ Nueva nota</button>
-      </div>
-    </div>
-    <div id="prod-cuerpo"></div>`;
-  const c = $('#prod-cuerpo');
-  const lista = notasFiltradas();
-  if (S.subProd === 'tablero') {
-    c.innerHTML = `<div class="tablero">${ETAPAS_NOTA.map((et, i) => {
+    ${barraNotas()}
+    <div class="tablero">${ETAPAS_NOTA.map((et, i) => {
       const items = lista.filter(n => n.etapa === i).sort((a, b) => (a.emision || '9').localeCompare(b.emision || '9'));
-      return `<div class="col ${i === 5 ? 'fin' : ''}"><h3><span>${et}</span><span>${items.length}</span></h3><div class="cards">${items.length ? items.map(tarjetaNota).join('') : '<div class="vacio">Nada acá.</div>'}</div></div>`;
+      return `<div class="col ${i === 5 ? 'fin' : ''}" data-soltar-etapa="${i}"><h3><span>${et}</span><span>${items.length}</span></h3><div class="cards">${items.length ? items.map(tarjetaNota).join('') : '<div class="vacio">Nada acá.</div>'}</div></div>`;
     }).join('')}</div>`;
-  } else {
-    const prox = proximoDomingo(), proxIso = iso(prox), dias = new Set();
-    for (let k = -3; k <= 6; k++) { const d = new Date(prox); d.setDate(d.getDate() + 7 * k); dias.add(iso(d)); }
-    lista.forEach(n => n.emision && dias.add(n.emision));
-    let html = [...dias].sort().map(s => {
-      const items = lista.filter(n => n.emision === s), d = parse(s);
-      const pasado = s < proxIso, esProx = s === proxIso;
-      return `<div class="dom ${pasado ? 'pasado' : ''} ${esProx ? 'proximo' : ''}">
-        <div class="d"><b>${d.getDate()} ${MESES[d.getMonth()]}</b><span>${d.getFullYear()} · 17:30${d.getDay() !== 0 ? ' · no es domingo' : ''}</span>${esProx ? '<br><em>Este domingo</em>' : ''}</div>
-        <div class="items">${items.length ? items.map(tarjetaNota).join('') : `<div class="nota">${pasado ? 'Sin notas registradas.' : 'Sin notas asignadas todavía.'}</div>`}</div></div>`;
-    }).join('');
-    const sin = lista.filter(n => !n.emision && n.etapa < 5);
-    html += `<div class="dom"><div class="d"><b>Sin fecha</b><span>${sin.length} nota${sin.length === 1 ? '' : 's'}</span></div><div class="items">${sin.length ? sin.map(tarjetaNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
-    c.innerHTML = `<div class="cal">${html}</div>`;
-  }
 }
+
+function renderCalendario() {
+  const v = $('#v-calendario');
+  const lista = notasFiltradas();
+  const prox = proximoDomingo(), proxIso = iso(prox), dias = new Set();
+  for (let k = -3; k <= 6; k++) { const d = new Date(prox); d.setDate(d.getDate() + 7 * k); dias.add(iso(d)); }
+  lista.forEach(n => n.emision && dias.add(n.emision));
+  let html = [...dias].sort().map(s => {
+    const items = lista.filter(n => n.emision === s), d = parse(s);
+    const pasado = s < proxIso, esProx = s === proxIso;
+    return `<div class="dom ${pasado ? 'pasado' : ''} ${esProx ? 'proximo' : ''}" data-soltar-fecha="${s}">
+      <div class="d"><b>${d.getDate()} ${MESES[d.getMonth()]}</b><span>${d.getFullYear()} · 17:30${d.getDay() !== 0 ? ' · no es domingo' : ''}</span>${esProx ? '<br><em>Este domingo</em>' : ''}</div>
+      <div class="items">${items.length ? items.map(tarjetaNota).join('') : `<div class="nota">${pasado ? 'Sin notas registradas.' : 'Sin notas asignadas todavía.'}</div>`}</div></div>`;
+  }).join('');
+  const sin = lista.filter(n => !n.emision && n.etapa < 5);
+  html += `<div class="dom" data-soltar-fecha=""><div class="d"><b>Sin fecha</b><span>${sin.length} nota${sin.length === 1 ? '' : 's'}</span></div><div class="items">${sin.length ? sin.map(tarjetaNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
+  v.innerHTML = `${barraNotas()}<div class="cal">${html}</div>`;
+}
+
+/* ---------- arrastrar tarjetas: en el tablero cambia la etapa, en el calendario el domingo ---------- */
+async function moverNota(id, cambio) {
+  const n = S.notas.find(x => x.id === id);
+  if (!n || Object.keys(cambio).every(k => n[k] === cambio[k])) return;
+  const antes = { ...n };
+  Object.assign(n, cambio); render();
+  if (!(await escribir(sb.from('notas').update(cambio).eq('id', id)))) { Object.assign(n, antes); render(); }
+}
+let arrastrando = null;
+document.addEventListener('dragstart', (ev) => {
+  const c = ev.target.closest && ev.target.closest('.card[data-nota]'); if (!c) return;
+  arrastrando = c.dataset.nota; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', arrastrando);
+  setTimeout(() => c.classList.add('arrastrando'), 0);
+});
+document.addEventListener('dragend', () => { arrastrando = null; document.querySelectorAll('.arrastrando, .sobre').forEach(e => e.classList.remove('arrastrando', 'sobre')); });
+const destino = (ev) => ev.target.closest && ev.target.closest('[data-soltar-etapa], [data-soltar-fecha]');
+document.addEventListener('dragover', (ev) => { const d = arrastrando && destino(ev); if (!d) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; });
+document.addEventListener('dragenter', (ev) => { const d = arrastrando && destino(ev); if (d) d.classList.add('sobre'); });
+document.addEventListener('dragleave', (ev) => { const d = destino(ev); if (d && !d.contains(ev.relatedTarget)) d.classList.remove('sobre'); });
+document.addEventListener('drop', (ev) => {
+  const d = arrastrando && destino(ev); if (!d) return;
+  ev.preventDefault();
+  const id = arrastrando; arrastrando = null;
+  if (d.dataset.soltarEtapa !== undefined) moverNota(id, { etapa: Number(d.dataset.soltarEtapa) });
+  else moverNota(id, { emision: d.dataset.soltarFecha || null });
+});
 
 function abrirNota(id) {
   const n = id ? S.notas.find(x => x.id === id) : null;
@@ -572,10 +603,9 @@ function renderEquipo() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async (ev) => {
-  const t = ev.target.closest('button, tr[data-empresa]');
+  const t = ev.target.closest('button, tr[data-empresa], .card[data-nota]');
   if (!t || t.closest('#f-nota') || t.closest('#f-login') || t.closest('#f-cuenta')) return;
   if (t.dataset.tab) { S.tab = t.dataset.tab; render(); return; }
-  if (t.dataset.subprod) { S.subProd = t.dataset.subprod; render(); return; }
   if (t.dataset.subsp) { S.subSp = t.dataset.subsp; render(); return; }
   if (t.dataset.nota) { abrirNota(t.dataset.nota); return; }
   if (t.hasAttribute('data-nueva-nota')) { abrirNota(null); return; }
@@ -602,13 +632,14 @@ document.addEventListener('click', async (ev) => {
 $('#velo').addEventListener('click', cerrarFicha);
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && S.abierta) cerrarFicha(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.fpass) { ev.preventDefault(); ev.target.closest('.acciones').querySelector('[data-pass], [data-activar]').click(); } });
+document.addEventListener('keydown', (ev) => { const c = ev.target.classList && ev.target.classList.contains('card') && ev.target.dataset.nota; if (c && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); abrirNota(c); } });
 document.addEventListener('input', (ev) => {
   const k = ev.target.dataset && ev.target.dataset.k;
   if (k && S.borrador) { S.borrador[k] = ev.target.value; const m = $('#msg-empresa'); if (m) m.textContent = 'Cambios sin guardar'; return; }
   if (ev.target.id === 'f-q') { S.q = ev.target.value; const pos = ev.target.selectionStart; $('#sp-cuerpo').innerHTML = htmlEmpresas(); const el = $('#f-q'); el.focus(); el.setSelectionRange(pos, pos); }
 });
 document.addEventListener('change', (ev) => {
-  if (ev.target.id === 'f-resp') { S.resp = ev.target.value; renderProduccion(); }
+  if (ev.target.id === 'f-resp') { S.resp = ev.target.value; render(); }
   if (ev.target.id === 'f-rubro') { S.rubro = ev.target.value; $('#sp-cuerpo').innerHTML = htmlEmpresas(); }
   if (ev.target.id === 'f-tipo') { S.tipo = ev.target.value; $('#sp-cuerpo').innerHTML = htmlEmpresas(); }
   if (ev.target.id === 'f-nivel') { S.nivel = ev.target.value; $('#sp-cuerpo').innerHTML = htmlEmpresas(); }
