@@ -83,6 +83,7 @@ a.pantalla:hover .ir { text-decoration: underline; }
 .capsula { margin-top: 28px; padding: 18px 20px; border-radius: 16px; background: var(--sea-soft); max-width: 720px; display: flex; gap: 16px; align-items: center; }
 .capsula img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex: none; }
 .capsula p { margin: 0; }
+.capsula + .capsula { margin-top: 12px; }
 .capsula b { font-family: var(--display); letter-spacing: .06em; }
 
 /* Notas */
