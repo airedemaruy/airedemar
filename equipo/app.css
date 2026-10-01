@@ -140,7 +140,7 @@ td .enc { color: var(--muted); font-size: 13px; max-width: 46ch; }
 .f textarea { resize: vertical; min-height: 70px; }
 .f > .pass-wrap { position: relative; display: block; font-size: inherit; color: inherit; }
 .pass-wrap input { padding-right: 38px; }
-.fila-pass { position: relative; display: block; width: 190px; }
+.fila-pass { position: relative; display: block; width: 210px; }
 .fila-pass input { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 38px 5px 10px; font-size: 13px; width: 100%; min-width: 0; }
 .ojo { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
 .ojo:hover { color: var(--ink); }

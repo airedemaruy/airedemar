@@ -32,7 +32,7 @@ const TABLAS = ['notas', 'empresas', 'contactos', 'envios', 'plantillas', 'paque
 
 const S = {
   yo: null, tab: 'produccion', subProd: 'tablero', subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
-  abierta: null, borrador: null, cargado: false, conCuenta: null, nivel: '', acuerdo: '',
+  abierta: null, borrador: null, cargado: false, conCuenta: null, claves: {}, nivel: '', acuerdo: '',
   notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
 };
 let canal = null;
@@ -124,6 +124,7 @@ $('#f-cuenta').addEventListener('submit', async (ev) => {
   if (a !== b) { $('#c-error').textContent = 'Las dos contraseñas no coinciden.'; return; }
   const { error } = await sb.auth.updateUser({ password: a });
   if (error) { $('#c-error').textContent = 'No se pudo cambiar: ' + error.message; return; }
+  llamarEquipo({ accion: 'guardar-clave', contrasena: a });
   $('#d-cuenta').close(); toast('Contraseña cambiada.');
 });
 
@@ -547,15 +548,16 @@ async function guardarContrasena(btn) {
 function renderEquipo() {
   const v = $('#v-equipo');
   if (!esAdmin()) { v.innerHTML = '<div class="vacio">Esta sección es solo para administradores.</div>'; return; }
-  if (S.conCuenta === null) { S.conCuenta = []; llamarEquipo({ accion: 'estado' }).then(r => { S.conCuenta = r.conCuenta || []; if (S.tab === 'equipo') renderEquipo(); }); }
+  if (S.conCuenta === null) { S.conCuenta = []; llamarEquipo({ accion: 'estado' }).then(r => { S.conCuenta = r.conCuenta || []; S.claves = r.claves || {}; if (S.tab === 'equipo') renderEquipo(); }); }
   const miembros = [...S.equipo].sort((a, b) => a.usuario.localeCompare(b.usuario));
   v.innerHTML = `
     <div class="seccion"><h2>Equipo</h2><p class="lead">Cada persona entra con su usuario y contraseña. Desde acá creás usuarios, les cambiás la contraseña si se la olvidan o les sacás el acceso.</p>
-      <div class="tabla"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody>
+      <div class="tabla"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Contraseña</th><th></th></tr></thead><tbody>
       ${miembros.map(m => { const tiene = (S.conCuenta || []).includes(m.usuario);
         return `<tr><td><b>${esc(m.usuario)}</b></td><td>${esc(m.nombre)}</td><td>${m.rol === 'admin' ? 'Administrador' : 'Editor'}</td>
         <td>${tiene ? '<span class="chip ok">Puede entrar</span>' : '<span class="chip warn">Sin contraseña</span>'}</td>
-        <td><div class="acciones"><span class="pass-wrap fila-pass"><input type="password" data-fpass="${esc(m.usuario)}" placeholder="${tiene ? 'Nueva contraseña' : 'Contraseña (mín. 8)'}" autocomplete="new-password" minlength="8" aria-label="Contraseña para ${esc(m.usuario)}">${OJO}</span>${tiene ? `<button class="btn quiet small" data-pass="${esc(m.usuario)}">Cambiar contraseña</button>` : `<button class="btn small" data-activar="${esc(m.usuario)}">Crear contraseña</button>`}
+        <td><span class="pass-wrap fila-pass"><input type="password" data-fpass="${esc(m.usuario)}" value="${esc((S.claves || {})[m.usuario] || '')}" placeholder="${tiene ? 'No registrada: escribí una' : 'Elegí una (mín. 8)'}" autocomplete="new-password" minlength="8" aria-label="Contraseña de ${esc(m.usuario)}">${OJO}</span></td>
+        <td><div class="acciones">${tiene ? `<button class="btn quiet small" data-pass="${esc(m.usuario)}">Cambiar contraseña</button>` : `<button class="btn small" data-activar="${esc(m.usuario)}">Crear contraseña</button>`}
         ${m.email !== S.yo.email ? `<button class="btn danger small" data-quitar="${esc(m.usuario)}">Quitar</button>` : ''}</div></td></tr>`; }).join('')}
       </tbody></table></div></div>
     <div class="seccion"><h2>Sumar a alguien</h2>
