@@ -45,7 +45,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.1; ma
 .boton { display: inline-block; padding: 11px 20px; border-radius: 999px; text-decoration: none; font-weight: 500; background: var(--teal); color: var(--teal-ink); }
 .boton.linea { background: transparent; color: var(--teal); box-shadow: inset 0 0 0 1.5px var(--teal); }
 .foto-portada { position: relative; justify-self: center; width: min(360px, 100%); }
-.foto-portada img { border-radius: 180px 180px 18px 18px; aspect-ratio: 4 / 5; object-fit: cover; width: 100%; }
+.foto-portada img { border-radius: 180px 180px 18px 18px; aspect-ratio: 4 / 5; height: auto; object-fit: cover; width: 100%; }
 .foto-portada figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; }
 @media (max-width: 780px) { .portada .contenedor { grid-template-columns: 1fr; } .foto-portada { width: min(300px, 100%); } }
 
