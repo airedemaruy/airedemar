@@ -1,0 +1,42 @@
+# Publica una nota en YouTube (Short) e Instagram (Reel). Lo dispara la app del equipo vía Supabase
+# ("Publicar ahora", o "Programar" a la hora agendada). El código está en .github/publicar/publicar.py.
+name: Publicar nota
+
+on:
+  workflow_dispatch:
+    inputs:
+      nota_id:
+        description: ID de la nota
+        required: true
+      cuando:
+        description: Hora de publicación (ISO, UTC)
+        required: true
+      ensayo:
+        description: "true = prueba completa sin publicar nada"
+        default: "false"
+
+permissions:
+  contents: write  # crear y borrar la release temporal con el video para Instagram
+
+concurrency:
+  group: publicar-${{ inputs.nota_id }}
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet google-api-python-client google-auth requests
+      - name: Publicar
+        run: python .github/publicar/publicar.py
+        env:
+          NOTA_ID: ${{ inputs.nota_id }}
+          CUANDO: ${{ inputs.cuando }}
+          ENSAYO: ${{ inputs.ensayo }}
+          PUB_SECRETO: ${{ secrets.PUB_SECRETO }}
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
