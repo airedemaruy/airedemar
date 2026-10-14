@@ -297,7 +297,8 @@ function tarjetaNota(n) {
   const pub = n.publicar_el ? `<span class="chip line">redes ${esc(fechaCorta(diaPub(n)))} ${esc(horaPub(n))}</span>` : '';
   const links = `<span class="pubs"><span class="pub ${n.link_crudo ? 'on' : ''}">Crudo</span><span class="pub ${n.link_completa ? 'on' : ''}">Completa</span><span class="pub ${n.link_vertical ? 'on' : ''}">Vertical</span></span>`;
   const quien = [n.grabo && `<span class="chip" title="Grabó">🎥 ${esc(n.grabo)}</span>`, n.editor && `<span class="chip" title="Edita la horizontal">✂️ H · ${esc(n.editor)}</span>`, n.editor_vertical && `<span class="chip" title="Edita el vertical">✂️ V · ${esc(n.editor_vertical)}</span>`].filter(Boolean).join('');
-  const faltan = e === 3 && !(n.copy_ig && n.yt_titulo) ? '<span class="chip alert">faltan textos</span>' : '';
+  const faltan = (e === 3 && !(n.copy_ig && n.yt_titulo) ? '<span class="chip alert">faltan textos</span>' : '') +
+    ({ programada: '<span class="chip ok">⏱ programada</span>', publicando: '<span class="chip warn">⏳ publicando</span>', error: '<span class="chip alert">⚠️ error al publicar</span>' }[n.pub_estado] || '');
   return `<div class="card" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}">
     <span class="tt"><span>${esc(n.titulo)}</span></span>
     ${n.entrevistados ? `<span class="meta">${esc(entrevistadosCorto(n))}</span>` : ''}
@@ -450,7 +451,7 @@ function abrirNota(id) {
         <label class="f"><span>Día de publicación en redes</span><input id="n-dia" type="date" value="${esc(n ? diaPub(n) : '')}"></label>
         <label class="f"><span>Hora</span><input id="n-hora" type="time" value="${esc(n ? horaPub(n) : HORA_PUBLICAR)}"></label>
       </div>
-      <div class="checks"><label><input type="checkbox" id="n-aprobado" ${n?.aprobado ? 'checked' : ''}> Textos y fecha aprobados: se puede publicar</label></div>`)}
+      ${n ? `<div class="publicar">${estadoPub(n)}<div class="acciones" id="n-pub-zona">${botonesPub(n)}</div></div>` : ''}`)}
     ${seccion(5, 'Publicación', 'se completa sola al publicar', `
       <label class="f"><span>Reel en IG</span><input id="n-link-ig" type="url" value="${esc(n?.link_ig)}"></label>
       <label class="f"><span>Short en YouTube</span><input id="n-link-short" type="url" value="${esc(n?.link_yt_short)}"></label>
@@ -490,6 +491,8 @@ $('#f-nota').addEventListener('click', async (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   const f = $('#f-nota');
   if (t.id === 'n-cancelar') $('#d-nota').close();
+  if (['n-programar', 'n-publicar-ahora', 'n-publicar-si', 'n-cancelar-pub', 'n-ensayo'].includes(t.id)) { await accionPub(t); return; }
+  if (t.id === 'n-publicar-no') { const n = S.notas.find(x => x.id === f.dataset.id); $('#n-pub-zona').innerHTML = botonesPub(n); return; }
   if (t.id === 'n-desde-copy') {
     const copy = $('#n-copy').value.trim();
     if (!copy) { toast('Primero escribí el copy de IG.'); return; }
@@ -501,24 +504,87 @@ $('#f-nota').addEventListener('click', async (ev) => {
   if (t.id === 'n-no') $('#n-borrar-zona').innerHTML = '<button type="button" class="btn danger" id="n-borrar">Borrar</button>';
   if (t.id === 'n-si') { if (await escribir(sb.from('notas').delete().eq('id', f.dataset.id), 'Nota borrada.')) { $('#d-nota').close(); await cargar('notas'); render(); } }
 });
-$('#f-nota').addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  const f = $('#f-nota'), val = (id) => $(id).value.trim();
-  const body = {
+function leerFormNota() {
+  const val = (id) => $(id).value.trim();
+  return {
     titulo: val('#n-titulo'), entrevistados: val('#n-entrevistados'), link_crudo: val('#n-crudo'), grabo: $('#n-grabo').value,
     editor: $('#n-editor').value, link_completa: val('#n-completa'), editor_vertical: $('#n-editor-v').value, link_vertical: val('#n-vertical'),
     programa_id: $('#n-programa').value || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
-    publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value), aprobado: $('#n-aprobado').checked,
+    publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
   };
-  if (!body.titulo) { toast('Poné un rótulo.'); return; }
-  if (body.copy_ig.length > 2200) { toast('El copy de IG pasa los 2200 caracteres.'); return; }
-  if (body.aprobado && !body.publicar_el) { toast('Para aprobar, elegí el día de publicación.'); return; }
-  if (body.aprobado && !(body.copy_ig && body.yt_titulo)) { toast('Para aprobar, completá el copy de IG y el título de YouTube.'); return; }
-  if (body.aprobado && !body.link_vertical) { toast('Para aprobar falta el link del recorte vertical.'); return; }
-  const q = f.dataset.id ? sb.from('notas').update(body).eq('id', f.dataset.id) : sb.from('notas').insert(body);
-  if (await escribir(q, f.dataset.id ? 'Nota guardada.' : 'Nota creada.')) { $('#d-nota').close(); await cargar('notas'); render(); }
+}
+function errorNota(body) {
+  if (!body.titulo) return 'Poné un rótulo.';
+  if (body.copy_ig.length > 2200) return 'El copy de IG pasa los 2200 caracteres.';
+  return '';
+}
+async function guardarNota(body, ok) {
+  const id = $('#f-nota').dataset.id;
+  return escribir(id ? sb.from('notas').update(body).eq('id', id) : sb.from('notas').insert(body), ok);
+}
+$('#f-nota').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = $('#f-nota'), body = leerFormNota(), err = errorNota(body);
+  if (err) { toast(err); return; }
+  const n = f.dataset.id && S.notas.find(x => x.id === f.dataset.id);
+  const cambioFecha = n && n.pub_estado === 'programada' && body.publicar_el !== new Date(n.publicar_el).toISOString();
+  if (cambioFecha && !puedePublicar()) { toast('La nota está programada: solo Floppy o Juandi pueden cambiarle la fecha.'); return; }
+  if (!(await guardarNota(body, f.dataset.id ? 'Nota guardada.' : 'Nota creada.'))) return;
+  if (cambioFecha) await llamarPublicar(f.dataset.id, body.publicar_el);
+  $('#d-nota').close(); await cargar('notas'); render();
 });
+
+/* ---------- publicación en IG y YouTube (la hace GitHub Actions; la dispara Supabase) ---------- */
+const puedePublicar = () => ['juandi', 'floppy'].includes(S.yo?.usuario);
+function estadoPub(n) {
+  const cuando = n.publicar_el ? `${fechaCorta(diaPub(n))} ${horaPub(n)}` : '';
+  const txt = {
+    programada: `⏱ Programada para el ${cuando}: sale sola en Instagram y YouTube.`,
+    publicando: `⏳ Publicando… ${n.pub_detalle}`,
+    publicada: `✅ ${n.pub_detalle || 'Publicada'}`,
+    error: `⚠️ No se pudo publicar. ${n.pub_detalle}`,
+  }[n.pub_estado] || n.pub_detalle;
+  return txt ? `<div class="nota pub-estado ${esc(n.pub_estado)}">${esc(txt)}</div>` : '';
+}
+function botonesPub(n) {
+  if (!puedePublicar()) return '<span class="nota">Programan y publican Floppy o Juandi.</span>';
+  if (n.pub_estado === 'publicando') return '';
+  const ensayo = '<button type="button" class="btn quiet small" id="n-ensayo" title="Hace todo el recorrido sin publicar nada">Probar sin publicar</button>';
+  if (n.pub_estado === 'programada') return `<button type="button" class="btn" id="n-programar">Reprogramar</button><button type="button" class="btn quiet" id="n-cancelar-pub">Cancelar programación</button>${ensayo}`;
+  return `<button type="button" class="btn" id="n-programar">Programar</button><button type="button" class="btn quiet" id="n-publicar-ahora">Publicar ahora</button>${ensayo}`;
+}
+async function llamarPublicar(id, cuando, ensayo = false) {
+  const { data, error } = await sb.rpc('publicar_nota', { p_id: id, p_cuando: cuando, p_ensayo: ensayo });
+  if (error) { toast('No se pudo: ' + error.message); return false; }
+  toast({ programada: 'Programada. Sale sola a esa hora en IG y YouTube.', publicando: 'Publicando: en unos minutos aparecen los links en la nota.',
+          ensayo: 'Ensayo en curso: en unos 3 minutos aparece el resultado en la nota.' }[data] || 'Listo.');
+  return true;
+}
+async function accionPub(t) {
+  const f = $('#f-nota'), id = f.dataset.id, body = leerFormNota(), err = errorNota(body);
+  if (t.id === 'n-cancelar-pub') {
+    const { error } = await sb.rpc('cancelar_publicacion', { p_id: id });
+    toast(error ? 'No se pudo cancelar: ' + error.message : 'Programación cancelada.');
+  } else {
+    if (err) { toast(err); return; }
+    if (!body.link_vertical || !body.copy_ig || !body.yt_titulo) { toast('Para publicar hacen falta el link vertical, el copy de IG y el título de YouTube.'); return; }
+    if (!/drive\.google\.com/.test(body.link_vertical)) { toast('El link vertical tiene que ser de Google Drive.'); return; }
+    if (t.id === 'n-publicar-ahora') {
+      $('#n-pub-zona').innerHTML = '<span class="nota">¿Publicar ya en Instagram y YouTube?</span><button type="button" class="btn" id="n-publicar-si">Sí, publicar</button><button type="button" class="btn quiet" id="n-publicar-no">No</button>';
+      return;
+    }
+    if (t.id === 'n-programar') {
+      if (!body.publicar_el) { toast('Elegí el día y la hora de publicación.'); return; }
+      if (new Date(body.publicar_el) < new Date(Date.now() + 11 * 60000)) { toast('Para dentro de menos de 11 minutos usá "Publicar ahora".'); return; }
+    }
+    if (!(await guardarNota(body))) return;
+    const ok = t.id === 'n-ensayo' ? await llamarPublicar(id, null, true)
+      : await llamarPublicar(id, t.id === 'n-programar' ? body.publicar_el : null);
+    if (!ok) return;
+  }
+  $('#d-nota').close(); await cargar('notas'); render();
+}
 
 /* ================= SPONSORS ================= */
 function banderas(e) {
