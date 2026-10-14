@@ -13,6 +13,7 @@ const emailDe = (usuario) => {
 const ETAPAS_NOTA = ['Grabada', 'Edición horizontal', 'Edición vertical', 'Para programar', 'Programada', 'Publicada'];
 const ETAPAS_PROG = ['Planificado', 'Grabado', 'En edición', 'Entregado al canal', 'Salió'];
 const SALIO_VISIBLES = 6;
+const NOTAS_VISIBLES = 8;
 const ETAPAS_EMP = [
   { id: 'prospecto', label: 'Prospecto', hint: 'Encaja, falta el contacto' },
   { id: 'listo', label: 'Contacto listo', hint: 'Tiene mail: entra a la secuencia' },
@@ -33,7 +34,7 @@ const TABLAS = ['programas', 'notas', 'empresas', 'contactos', 'envios', 'planti
 
 function vistaGuardada() { try { return localStorage.getItem('calVista') === 'lista' ? 'lista' : 'clasico'; } catch (_) { return 'clasico'; } }
 const S = {
-  yo: null, tab: 'programas', progTodos: false, calVista: vistaGuardada(), calMes: new Date(), subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
+  yo: null, tab: 'programas', progTodos: false, colTodas: new Set(), calVista: vistaGuardada(), calMes: new Date(), subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
   abierta: null, borrador: null, cargado: false, conCuenta: null, claves: {}, nivel: '', acuerdo: '',
   programas: [], notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
 };
@@ -171,11 +172,13 @@ function tarjetaPrograma(p) {
   const fecha = p.fecha ? `<span class="chip line">dom ${esc(fechaCorta(p.fecha))}</span>` : '<span class="chip warn">sin fecha</span>';
   const yt = `<span class="pubs"><span class="pub ${p.yt ? 'on' : ''}">YT</span></span>`;
   const falta = p.etapa >= 4 && !p.yt ? '<span class="flags"><span class="chip alert">falta YouTube</span></span>' : '';
+  const notas = S.notas.filter(n => n.programa_id === p.id);
   return `<div class="card" role="button" tabindex="0" draggable="true" data-prog="${esc(p.id)}">
     <span class="tt"><span>${p.numero ? 'ADM #' + esc(p.numero) : 'Programa'}</span></span>
     ${p.invitado ? `<span class="meta">${esc(p.invitado)}</span>` : ''}
     <span class="flags">${fecha}${yt}</span>
     ${falta}
+    ${notas.length ? `<span class="notas-prog">${notas.map(chipNota).join('')}</span>` : ''}
     ${p.pendientes ? `<span class="pend">${esc(p.pendientes)}</span>` : ''}
   </div>`;
 }
@@ -320,9 +323,13 @@ function renderInformes() {
     <div class="tira">${stats.map(([n, l, a]) => `<div class="${a ? 'alerta' : ''}"><span class="n">${n}</span><span class="l">${l}</span></div>`).join('')}</div>
     ${barraNotas()}
     <div class="tablero">${ETAPAS_NOTA.map((et, i) => {
-      const items = lista.filter(n => etapaNota(n) === i).sort((a, b) => (a.publicar_el || a.creado || '').localeCompare(b.publicar_el || b.creado || ''));
-      if (i === 5) items.reverse();
-      return `<div class="col ${i === 5 ? 'fin' : ''}"><h3><span>${et}</span><span>${items.length}</span></h3>${HINTS_NOTA[i] ? `<div class="hint">${HINTS_NOTA[i]}</div>` : ''}<div class="cards">${items.length ? items.map(tarjetaNota).join('') : '<div class="vacio">Nada acá.</div>'}</div></div>`;
+      const numProg = (n) => programa(n.programa_id)?.numero ?? 999;  // sin programa = lo más nuevo
+      const items = lista.filter(n => etapaNota(n) === i).sort((a, b) => i >= 4
+        ? (b.publicar_el || '').localeCompare(a.publicar_el || '')
+        : numProg(b) - numProg(a) || (b.creado || '').localeCompare(a.creado || ''));
+      const todas = S.colTodas.has(i), visibles = todas ? items : items.slice(0, NOTAS_VISIBLES);
+      const mas = items.length > NOTAS_VISIBLES ? `<button class="btn quiet small" data-col-todas="${i}">${todas ? 'Ver menos' : `Ver ${items.length - NOTAS_VISIBLES} más`}</button>` : '';
+      return `<div class="col ${i === 5 ? 'fin' : ''}"><h3><span>${et}</span><span>${items.length}</span></h3>${HINTS_NOTA[i] ? `<div class="hint">${HINTS_NOTA[i]}</div>` : ''}<div class="cards">${items.length ? visibles.map(tarjetaNota).join('') : '<div class="vacio">Nada acá.</div>'}${mas}</div></div>`;
     }).join('')}</div>`;
 }
 
@@ -775,6 +782,7 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.prog) { abrirPrograma(t.dataset.prog); return; }
   if (t.hasAttribute('data-nuevo-programa')) { abrirPrograma(null); return; }
   if (t.hasAttribute('data-prog-todos')) { S.progTodos = !S.progTodos; render(); return; }
+  if (t.dataset.colTodas) { const i = Number(t.dataset.colTodas); S.colTodas.has(i) ? S.colTodas.delete(i) : S.colTodas.add(i); render(); return; }
   if (t.dataset.calvista) { S.calVista = t.dataset.calvista; try { localStorage.setItem('calVista', S.calVista); } catch (_) {} render(); return; }
   if (t.dataset.calmes) { S.calMes = t.dataset.calmes === 'hoy' ? new Date() : new Date(S.calMes.getFullYear(), S.calMes.getMonth() + Number(t.dataset.calmes), 1); render(); return; }
   if (t.hasAttribute('data-nueva-nota')) { abrirNota(null); return; }

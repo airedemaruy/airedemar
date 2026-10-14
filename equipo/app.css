@@ -213,6 +213,7 @@ dialog h3 { font-size: 22px; }
 .chip-nota.arrastrando { opacity: .4; }
 .chip-nota.e5 { border-left-color: var(--ok); }
 .chip-nota.e0, .chip-nota.e1, .chip-nota.e2 { border-left-color: var(--line); background: var(--surface-2); }
+.notas-prog { display: grid; gap: 4px; min-width: 0; }
 .tv-dia { font-size: 11px; font-weight: 600; color: var(--teal); letter-spacing: .04em; }
 #f-nota details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 #f-nota summary { cursor: pointer; padding: 10px 12px; font-weight: 600; }
