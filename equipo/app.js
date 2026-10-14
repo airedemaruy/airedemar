@@ -258,10 +258,13 @@ function etapaNota(n) {
   if (n.aprobado && n.publicar_el) return 4;
   if (n.link_completa && n.link_vertical) return 3;
   if (n.link_completa) return 2;
-  if (n.editor || n.link_vertical) return 1;
+  if (n.link_crudo || n.link_vertical) return 1;
   return 0;
 }
-const HINTS_NOTA = ['Falta asignar quién edita la horizontal', 'Falta el link de la nota completa', 'Falta el recorte vertical', 'El coordinador completa textos, aprueba y pone fecha', 'Lista para salir en la fecha', ''];
+/* La horizontal (nota completa y montaje) la edita siempre la agencia; el vertical, Juandi. */
+const EDITOR_HORIZONTAL = 'Agencia Boomer';
+const EDITOR_VERTICAL = 'Juandi';
+const HINTS_NOTA = ['Falta el link del crudo', `${EDITOR_HORIZONTAL} arma la nota completa`, `${EDITOR_VERTICAL} hace el recorte vertical`, 'El coordinador completa textos, aprueba y pone fecha', 'Lista para salir en la fecha', ''];
 const HORA_PUBLICAR = '18:00';
 const programa = (id) => S.programas.find(p => p.id === id);
 const nombrePrograma = (p) => p ? `ADM #${p.numero ?? '?'}${p.fecha ? ' · ' + fechaCorta(p.fecha) : ''}${p.invitado ? ' · ' + p.invitado : ''}` : '';
@@ -306,7 +309,7 @@ function renderInformes() {
   const v = $('#v-informes');
   const ns = S.notas, cuenta = (i) => ns.filter(n => etapaNota(n) === i).length;
   const stats = [
-    [cuenta(0), 'grabadas sin editor', cuenta(0) > 0],
+    [cuenta(0), 'sin link del crudo', cuenta(0) > 0],
     [cuenta(1) + cuenta(2), 'en edición (horizontal o vertical)'],
     [cuenta(3), 'esperan al coordinador', cuenta(3) > 0],
     [cuenta(4), 'programadas para redes'],
@@ -397,9 +400,9 @@ document.addEventListener('drop', (ev) => {
 function abrirNota(id) {
   const n = id ? S.notas.find(x => x.id === id) : null;
   const e = n ? etapaNota(n) : 0;
-  const abierta = !n ? 1 : e <= 1 ? 2 : e === 2 ? 3 : e <= 4 ? 4 : 5;
-  const gente = (actual) => [...new Set([...responsables(), actual].filter(Boolean))];
-  const sel = (id, actual) => `<select id="${id}"><option value="">—</option>${gente(actual).map(r => `<option ${r === actual ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>`;
+  const abierta = !n || e === 0 ? 1 : e === 1 ? 2 : e === 2 ? 3 : e <= 4 ? 4 : 5;
+  const gente = (actual, extra) => [...new Set([extra, ...responsables(), actual].filter(Boolean))];
+  const sel = (id, actual, extra) => `<select id="${id}"><option value="">—</option>${gente(actual, extra).map(r => `<option ${r === actual ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>`;
   const progs = [...S.programas].sort((a, b) => (b.numero || 0) - (a.numero || 0));
   const seccion = (i, titulo, quien, cuerpo) => `<details ${abierta === i ? 'open' : ''}><summary>${i} · ${titulo} <span class="nota">${quien}</span></summary><div class="cuerpo">${cuerpo}</div></details>`;
   const f = $('#f-nota');
@@ -412,10 +415,10 @@ function abrirNota(id) {
       <label class="f"><span>Link del crudo (Google Drive)</span><input id="n-crudo" type="url" value="${esc(n?.link_crudo)}" placeholder="https://drive.google.com/…"></label>
       <label class="f"><span>Quién grabó</span>${sel('n-grabo', n ? n.grabo : S.yo.nombre)}</label>`)}
     ${seccion(2, 'Edición horizontal', 'nota completa: TV y YouTube', `
-      <label class="f"><span>Quién edita</span>${sel('n-editor', n?.editor)}</label>
+      <label class="f"><span>Quién edita</span>${sel('n-editor', n ? n.editor : EDITOR_HORIZONTAL, EDITOR_HORIZONTAL)}</label>
       <label class="f"><span>Link nota completa</span><input id="n-completa" type="url" value="${esc(n?.link_completa)}" placeholder="https://drive.google.com/…"></label>`)}
     ${seccion(3, 'Edición vertical', 'recorte: Reel y Short', `
-      <label class="f"><span>Quién edita</span>${sel('n-editor-v', n?.editor_vertical)}</label>
+      <label class="f"><span>Quién edita</span>${sel('n-editor-v', n ? n.editor_vertical : EDITOR_VERTICAL)}</label>
       <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
     ${seccion(4, 'Coordinación', 'coordinador', `
       <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
