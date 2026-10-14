@@ -466,6 +466,7 @@ function abrirNota(id) {
 }
 /* Título y descripción de YouTube armados con reglas a partir del copy de IG (sin IA, gratis). */
 const SUFIJO_SHORT = ' | Aire de Mar #Shorts';
+const CTA = '▶️ Mirá la nota completa en nuestro canal de YouTube.';  // estándar desde 2026-10-14 (versión de Floppy)
 const sinEmojis = (s) => s.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, '').replace(/\s{2,}/g, ' ').trim();
 const SOLO_IG = /nota completa|canal de youtube|\breel\b|link en (la )?bio/i;
 function youtubeDesdeCopy(copy, linkCompleta) {
@@ -477,7 +478,7 @@ function youtubeDesdeCopy(copy, linkCompleta) {
   const cuerpo = lineas.filter(l => !SOLO_IG.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   const hashtags = cuerpo.match(/^(#\S+\s*)+$/m);
   const sinTags = hashtags ? cuerpo.replace(hashtags[0], '').trim() : cuerpo;
-  const descripcion = [sinTags, linkCompleta ? `Nota completa en nuestro Canal de YouTube: ${linkCompleta}` : 'Nota completa en nuestro Canal de YouTube.',
+  const descripcion = [sinTags, linkCompleta ? `${CTA.replace(/\.$/, '')}: ${linkCompleta}` : CTA,
     'Domingos 17:30 por Canal Once Punta del Este.', hashtags ? hashtags[0].trim() : ''].filter(Boolean).join('\n\n');
   return { titulo, descripcion };
 }
