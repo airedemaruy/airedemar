@@ -123,15 +123,26 @@ def main():
     # 3. Programa completo: los 3 bloques pegados sin recomprimir (si no son compatibles, se recomprime)
     id_comp = id_yt(p["yt_completo"])
     if not id_comp:
+        def dur(ruta):
+            r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", ruta],
+                               capture_output=True, text=True)
+            return float(r.stdout.strip() or 0)
+        esperado = sum(dur(rutas[b]) for b in (1, 2, 3))
         open("/tmp/lista.txt", "w").write("".join(f"file '{rutas[b]}'\n" for b in (1, 2, 3)))
         r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "/tmp/lista.txt",
                             "-c", "copy", "-movflags", "+faststart", "/tmp/completo.mp4"], capture_output=True, text=True)
-        if r.returncode:
-            log("Los bloques no se pueden pegar directo: se recomprime (tarda más)")
-            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "/tmp/lista.txt",
-                            "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k",
-                            "-movflags", "+faststart", "/tmp/completo.mp4"], check=True)
-        log("Programa completo armado")
+        # Pegar sin recomprimir solo sirve si las marcas de tiempo de los bloques encajan: se verifica la duración
+        if r.returncode or abs(dur("/tmp/completo.mp4") - esperado) > 2:
+            log(f"Pegado directo no sirvió (duración {dur('/tmp/completo.mp4'):.0f}s, esperada {esperado:.0f}s): se recomprime")
+            avisar(pub_progreso=45, pub_detalle="Armando el programa completo (recomprimiendo en alta calidad, tarda unos minutos)…")
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", rutas[1], "-i", rutas[2], "-i", rutas[3],
+                            "-filter_complex", "[0:v][0:a][1:v][1:a][2:v][2:a]concat=n=3:v=1:a=1[v][a]",
+                            "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "/tmp/completo.mp4"], check=True)
+        final = dur("/tmp/completo.mp4")
+        if abs(final - esperado) > 2:
+            raise RuntimeError(f"El programa completo dura {final:.0f}s y debería durar {esperado:.0f}s")
+        log(f"Programa completo armado ({int(final // 60)}:{int(final % 60):02d})")
         avisar(pub_progreso=60, pub_detalle="Subiendo el programa completo…")
         id_comp = subir(yt, "/tmp/completo.mp4", f"Aire de Mar 2026 #{n} - Programa completo")
         avisar(yt_completo=f"https://youtu.be/{id_comp}")
