@@ -10,10 +10,9 @@ const emailDe = (usuario) => {
   return u.includes('@') ? u : `airedemar.uy+${u}@gmail.com`;
 };
 
-const ETAPAS_NOTA = ['Grabada', 'Corte', 'Edición', 'Copies', 'Lista', 'Salió'];
+const ETAPAS_NOTA = ['Grabada', 'En edición', 'Editada', 'Para programar', 'Programada', 'Publicada'];
 const ETAPAS_PROG = ['Planificado', 'Grabado', 'En edición', 'Entregado al canal', 'Salió'];
 const SALIO_VISIBLES = 6;
-const PILARES = ['Deportistas y protagonistas', 'Deporte en acción', 'Medio ambiente y comunidad', 'Cultura del mar', 'Detrás de cámaras', 'Educación y tips'];
 const ETAPAS_EMP = [
   { id: 'prospecto', label: 'Prospecto', hint: 'Encaja, falta el contacto' },
   { id: 'listo', label: 'Contacto listo', hint: 'Tiene mail: entra a la secuencia' },
@@ -253,55 +252,78 @@ $('#f-programa').addEventListener('submit', async (ev) => {
 });
 
 /* ================= INFORMES ================= */
-function notasFiltradas() { return S.resp ? S.notas.filter(n => n.responsable === S.resp) : S.notas; }
+/* La etapa no se elige: sale de lo que ya está cargado. Graba → edita → coordina → se publica. */
+function etapaNota(n) {
+  if (n.link_ig || n.link_yt_short) return 5;
+  if (n.aprobado && n.publicar_el) return 4;
+  if (n.copy_ig || n.yt_titulo) return 3;
+  if (n.link_completa || n.link_vertical) return 2;
+  if (n.editor) return 1;
+  return 0;
+}
+const HINTS_NOTA = ['Falta asignar quién edita', 'Falta el link del video editado', 'Faltan los textos', 'El coordinador aprueba y pone fecha', 'Lista para salir en la fecha', ''];
+const HORA_PUBLICAR = '18:00';
+const programa = (id) => S.programas.find(p => p.id === id);
+const nombrePrograma = (p) => p ? `ADM #${p.numero ?? '?'}${p.fecha ? ' · ' + fechaCorta(p.fecha) : ''}${p.invitado ? ' · ' + p.invitado : ''}` : '';
+const diaPub = (n) => n.publicar_el ? iso(new Date(n.publicar_el)) : '';
+const horaPub = (n) => n.publicar_el ? new Date(n.publicar_el).toTimeString().slice(0, 5) : HORA_PUBLICAR;
+function fechaHora(dia, hora) { if (!dia) return null; const [y, m, d] = dia.split('-').map(Number), [hh, mm] = (hora || HORA_PUBLICAR).split(':').map(Number); return new Date(y, m - 1, d, hh, mm).toISOString(); }
+const entrevistadosCorto = (n) => (n.entrevistados || '').split('\n').map(s => s.trim()).filter(Boolean).join(' · ');
+
+function notasFiltradas() { return S.resp ? S.notas.filter(n => n.grabo === S.resp || n.editor === S.resp) : S.notas; }
 
 function tarjetaNota(n) {
-  const fecha = n.emision ? `<span class="chip line">dom ${esc(fechaCorta(n.emision))}</span>` : '<span class="chip warn">sin fecha</span>';
-  const pubs = `<span class="pubs"><span class="pub ${n.tv ? 'on' : ''}">TV</span><span class="pub ${n.ig ? 'on' : ''}">IG</span><span class="pub ${n.yt ? 'on' : ''}">YT</span></span>`;
-  const faltan = n.etapa >= 5 ? [!n.ig && 'falta IG', !n.yt && 'falta YouTube'].filter(Boolean).map(x => `<span class="chip alert">${x}</span>`).join('') : '';
+  const e = etapaNota(n), p = programa(n.programa_id);
+  const prog = p ? `<span class="chip line">ADM #${esc(p.numero ?? '?')}</span>` : (e >= 2 ? '<span class="chip warn">sin programa</span>' : '');
+  const pub = n.publicar_el ? `<span class="chip line">redes ${esc(fechaCorta(diaPub(n)))} ${esc(horaPub(n))}</span>` : '';
+  const links = `<span class="pubs"><span class="pub ${n.link_crudo ? 'on' : ''}">Crudo</span><span class="pub ${n.link_completa ? 'on' : ''}">Completa</span><span class="pub ${n.link_vertical ? 'on' : ''}">Vertical</span></span>`;
+  const quien = [n.grabo && `<span class="chip">🎥 ${esc(n.grabo)}</span>`, n.editor && `<span class="chip">✂️ ${esc(n.editor)}</span>`].filter(Boolean).join('');
+  const faltan = [e >= 2 && !n.link_vertical && 'falta vertical', e >= 2 && !n.link_completa && 'falta nota completa'].filter(Boolean).map(x => `<span class="chip alert">${x}</span>`).join('');
   return `<div class="card" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}">
     <span class="tt"><span>${esc(n.titulo)}</span></span>
-    ${n.protagonista ? `<span class="meta">${esc(n.protagonista)}</span>` : ''}
-    <span class="flags">${fecha}${pubs}${n.responsable ? `<span class="chip">${esc(n.responsable)}</span>` : ''}${n.duracion ? `<span class="chip line">${esc(n.duracion)}</span>` : ''}</span>
-    ${faltan ? `<span class="flags">${faltan}</span>` : ''}
+    ${n.entrevistados ? `<span class="meta">${esc(entrevistadosCorto(n))}</span>` : ''}
+    <span class="flags">${prog}${pub}${links}</span>
+    ${quien || faltan ? `<span class="flags">${quien}${faltan}</span>` : ''}
     ${n.pendientes ? `<span class="pend">${esc(n.pendientes)}</span>` : ''}
   </div>`;
 }
 
 function barraNotas(izq = '') {
-  const opcResp = ['', ...new Set([...responsables(), ...S.notas.map(n => n.responsable).filter(Boolean)])];
+  const opcResp = ['', ...new Set([...responsables(), ...S.notas.flatMap(n => [n.grabo, n.editor]).filter(Boolean)])];
   return `<div class="barra">${izq || '<span></span>'}
       <div class="herr">
-        <select id="f-resp" aria-label="Responsable">${opcResp.map(r => `<option value="${esc(r)}" ${r === S.resp ? 'selected' : ''}>${r ? esc(r) : 'Todo el equipo'}</option>`).join('')}</select>
+        <select id="f-resp" aria-label="Quién graba o edita">${opcResp.map(r => `<option value="${esc(r)}" ${r === S.resp ? 'selected' : ''}>${r ? esc(r) : 'Todo el equipo'}</option>`).join('')}</select>
         <button class="btn" data-nueva-nota>+ Nueva nota</button>
       </div>
     </div>`;
 }
 
 function chipNota(n) {
-  return `<div class="chip-nota e${n.etapa}" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}" title="${esc(n.titulo)}${n.responsable ? ' · ' + esc(n.responsable) : ''}">${esc(n.titulo)}</div>`;
+  return `<div class="chip-nota e${etapaNota(n)}" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}" title="${esc(n.titulo)} · ${esc(ETAPAS_NOTA[etapaNota(n)])}${n.publicar_el ? ' · ' + esc(horaPub(n)) : ''}">${esc(n.titulo)}</div>`;
 }
 
 function renderInformes() {
   const v = $('#v-informes');
-  const ns = S.notas, dom = iso(proximoDomingo());
+  const ns = S.notas, cuenta = (i) => ns.filter(n => etapaNota(n) === i).length;
   const stats = [
-    [ns.filter(n => n.etapa < 4).length, 'en producción'],
-    [ns.filter(n => n.etapa === 4).length, 'listas para emitir'],
-    [ns.filter(n => n.emision === dom).length, 'para este domingo', ns.filter(n => n.emision === dom).length === 0],
-    [ns.filter(n => !n.emision && n.etapa < 5).length, 'sin fecha de emisión', ns.some(n => !n.emision && n.etapa < 5)],
-    [ns.filter(n => n.etapa >= 5 && !n.yt).length, 'salieron y faltan en YouTube', ns.some(n => n.etapa >= 5 && !n.yt)],
+    [cuenta(0), 'grabadas sin editor', cuenta(0) > 0],
+    [cuenta(1), 'en edición'],
+    [cuenta(2) + cuenta(3), 'esperan al coordinador', cuenta(3) > 0],
+    [cuenta(4), 'programadas para redes'],
+    [cuenta(5), 'publicadas'],
   ];
   const lista = notasFiltradas();
   v.innerHTML = `
     <div class="tira">${stats.map(([n, l, a]) => `<div class="${a ? 'alerta' : ''}"><span class="n">${n}</span><span class="l">${l}</span></div>`).join('')}</div>
     ${barraNotas()}
     <div class="tablero">${ETAPAS_NOTA.map((et, i) => {
-      const items = lista.filter(n => n.etapa === i).sort((a, b) => (a.emision || '9').localeCompare(b.emision || '9'));
-      return `<div class="col ${i === 5 ? 'fin' : ''}" data-soltar-etapa="${i}"><h3><span>${et}</span><span>${items.length}</span></h3><div class="cards">${items.length ? items.map(tarjetaNota).join('') : '<div class="vacio">Nada acá.</div>'}</div></div>`;
+      const items = lista.filter(n => etapaNota(n) === i).sort((a, b) => (a.publicar_el || a.creado || '').localeCompare(b.publicar_el || b.creado || ''));
+      if (i === 5) items.reverse();
+      return `<div class="col ${i === 5 ? 'fin' : ''}"><h3><span>${et}</span><span>${items.length}</span></h3>${HINTS_NOTA[i] ? `<div class="hint">${HINTS_NOTA[i]}</div>` : ''}<div class="cards">${items.length ? items.map(tarjetaNota).join('') : '<div class="vacio">Nada acá.</div>'}</div></div>`;
     }).join('')}</div>`;
 }
 
+/* El calendario muestra cuándo sale cada nota en redes; los domingos llevan el programa que va por TV. */
 function renderCalendario() {
   const v = $('#v-calendario');
   const lista = notasFiltradas();
@@ -310,29 +332,29 @@ function renderCalendario() {
   const nombreMes = mes.toLocaleDateString('es-UY', { month: 'long', year: 'numeric' }).replace(/^./, c => c.toUpperCase());
   const izq = `<div class="herr"><div class="sub" role="tablist"><button data-calvista="clasico" aria-selected="${clasico}">Clásico</button><button data-calvista="lista" aria-selected="${!clasico}">Lista</button></div>` +
     (clasico ? `<div class="mes-nav"><button class="btn quiet small" data-calmes="-1" aria-label="Mes anterior">‹</button><b class="mes-nombre">${esc(nombreMes)}</b><button class="btn quiet small" data-calmes="1" aria-label="Mes siguiente">›</button><button class="btn quiet small" data-calmes="hoy">Hoy</button></div>` : '') + '</div>';
-  const sin = lista.filter(n => !n.emision && n.etapa < 5);
+  const sin = lista.filter(n => !n.publicar_el && etapaNota(n) < 5);
+  const progDel = (s) => S.programas.find(p => p.fecha === s);
   let cuerpo;
   if (clasico) {
     const offset = (mes.getDay() + 6) % 7, total = Math.ceil((offset + new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate()) / 7) * 7;
     const hoy = hoyIso();
     const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => `<div class="cab">${d}</div>`).join('');
     const celdas = Array.from({ length: total }, (_, i) => {
-      const d = new Date(mes.getFullYear(), mes.getMonth(), 1 - offset + i), s = iso(d);
-      const items = lista.filter(n => n.emision === s);
-      return `<div class="dia ${d.getMonth() !== mes.getMonth() ? 'fuera' : ''} ${s === hoy ? 'hoy' : ''} ${d.getDay() === 0 ? 'domingo' : ''}" data-soltar-fecha="${s}"><span class="num">${d.getDate()}</span>${items.map(chipNota).join('')}</div>`;
+      const d = new Date(mes.getFullYear(), mes.getMonth(), 1 - offset + i), s = iso(d), p = progDel(s);
+      const items = lista.filter(n => diaPub(n) === s).sort((a, b) => a.publicar_el.localeCompare(b.publicar_el));
+      return `<div class="dia ${d.getMonth() !== mes.getMonth() ? 'fuera' : ''} ${s === hoy ? 'hoy' : ''} ${d.getDay() === 0 ? 'domingo' : ''}" data-soltar-fecha="${s}"><span class="num">${d.getDate()}</span>${p ? `<span class="tv-dia" title="${esc(nombrePrograma(p))}">TV · ADM #${esc(p.numero ?? '?')}</span>` : ''}${items.map(chipNota).join('')}</div>`;
     }).join('');
     cuerpo = `<div class="grilla-wrap"><div class="grilla">${dias}${celdas}</div></div>
-      <div class="sinfecha" data-soltar-fecha=""><h4>Sin fecha <span>${sin.length}</span></h4><div class="items">${sin.length ? sin.map(chipNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
+      <div class="sinfecha" data-soltar-fecha=""><h4>Sin fecha para redes <span>${sin.length}</span></h4><div class="items">${sin.length ? sin.map(chipNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
   } else {
-    const prox = proximoDomingo(), proxIso = iso(prox), dias = new Set();
-    for (let k = -3; k <= 6; k++) { const d = new Date(prox); d.setDate(d.getDate() + 7 * k); dias.add(iso(d)); }
-    lista.forEach(n => n.emision && dias.add(n.emision));
+    const hoy = hoyIso(), dias = new Set([hoy]);
+    lista.forEach(n => { const s = diaPub(n); if (s && s >= iso(new Date(Date.now() - 14 * 864e5))) dias.add(s); });
     let html = [...dias].sort().map(s => {
-      const items = lista.filter(n => n.emision === s), d = parse(s);
-      const pasado = s < proxIso, esProx = s === proxIso;
-      return `<div class="dom ${pasado ? 'pasado' : ''} ${esProx ? 'proximo' : ''}" data-soltar-fecha="${s}">
-        <div class="d"><b>${d.getDate()} ${MESES[d.getMonth()]}</b><span>${d.getFullYear()} · 17:30${d.getDay() !== 0 ? ' · no es domingo' : ''}</span>${esProx ? '<br><em>Este domingo</em>' : ''}</div>
-        <div class="items">${items.length ? items.map(tarjetaNota).join('') : `<div class="nota">${pasado ? 'Sin notas registradas.' : 'Sin notas asignadas todavía.'}</div>`}</div></div>`;
+      const items = lista.filter(n => diaPub(n) === s).sort((a, b) => a.publicar_el.localeCompare(b.publicar_el)), d = parse(s), p = progDel(s);
+      const dia = d.toLocaleDateString('es-UY', { weekday: 'long' });
+      return `<div class="dom ${s < hoy ? 'pasado' : ''} ${s === hoy ? 'proximo' : ''}" data-soltar-fecha="${s}">
+        <div class="d"><b>${d.getDate()} ${MESES[d.getMonth()]}</b><span>${esc(dia)}${p ? ` · TV ADM #${esc(p.numero ?? '?')}` : ''}</span>${s === hoy ? '<br><em>Hoy</em>' : ''}</div>
+        <div class="items">${items.length ? items.map(tarjetaNota).join('') : '<div class="nota">Nada para publicar.</div>'}</div></div>`;
     }).join('');
     html += `<div class="dom" data-soltar-fecha=""><div class="d"><b>Sin fecha</b><span>${sin.length} nota${sin.length === 1 ? '' : 's'}</span></div><div class="items">${sin.length ? sin.map(tarjetaNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
     cuerpo = `<div class="cal">${html}</div>`;
@@ -340,7 +362,7 @@ function renderCalendario() {
   v.innerHTML = barraNotas(izq) + cuerpo;
 }
 
-/* ---------- arrastrar tarjetas: en los tableros cambia la etapa, en el calendario el domingo ---------- */
+/* ---------- arrastrar tarjetas: en Programas cambia la etapa, en el calendario el día de redes ---------- */
 async function mover(tabla, id, cambio) {
   const n = S[tabla].find(x => x.id === id);
   if (!n || Object.keys(cambio).every(k => n[k] === cambio[k])) return;
@@ -356,69 +378,92 @@ document.addEventListener('dragstart', (ev) => {
   setTimeout(() => c.classList.add('arrastrando'), 0);
 });
 document.addEventListener('dragend', () => { arrastrando = null; document.querySelectorAll('.arrastrando, .sobre').forEach(e => e.classList.remove('arrastrando', 'sobre')); });
-const destino = (ev) => ev.target.closest && ev.target.closest('[data-soltar-etapa], [data-soltar-fecha]');
-document.addEventListener('dragover', (ev) => { const d = arrastrando && destino(ev); if (!d) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; });
-document.addEventListener('dragenter', (ev) => { const d = arrastrando && destino(ev); if (d) d.classList.add('sobre'); });
-document.addEventListener('dragleave', (ev) => { const d = destino(ev); if (d && !d.contains(ev.relatedTarget)) d.classList.remove('sobre'); });
+const destino = (ev) => {
+  const d = ev.target.closest && ev.target.closest('[data-soltar-etapa], [data-soltar-fecha]');
+  if (!d || !arrastrando) return null;
+  return (d.dataset.soltarEtapa !== undefined) === (arrastrando.tabla === 'programas') ? d : null;
+};
+document.addEventListener('dragover', (ev) => { const d = destino(ev); if (!d) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; });
+document.addEventListener('dragenter', (ev) => { const d = destino(ev); if (d) d.classList.add('sobre'); });
+document.addEventListener('dragleave', (ev) => { const d = ev.target.closest && ev.target.closest('.sobre'); if (d && !d.contains(ev.relatedTarget)) d.classList.remove('sobre'); });
 document.addEventListener('drop', (ev) => {
-  const d = arrastrando && destino(ev); if (!d) return;
+  const d = destino(ev); if (!d) return;
   ev.preventDefault();
   const { tabla, id } = arrastrando; arrastrando = null;
-  if (d.dataset.soltarEtapa !== undefined) mover(tabla, id, { etapa: Number(d.dataset.soltarEtapa) });
-  else if (tabla === 'notas') mover(tabla, id, { emision: d.dataset.soltarFecha || null });
+  if (tabla === 'programas') mover(tabla, id, { etapa: Number(d.dataset.soltarEtapa) });
+  else { const n = S.notas.find(x => x.id === id); mover(tabla, id, { publicar_el: fechaHora(d.dataset.soltarFecha, n && horaPub(n)) }); }
 });
 
 function abrirNota(id) {
   const n = id ? S.notas.find(x => x.id === id) : null;
-  const resp = [...new Set([...responsables(), n?.responsable].filter(Boolean))];
+  const e = n ? etapaNota(n) : 0;
+  const abierta = !n ? 1 : e <= 1 ? 2 : e <= 4 ? 3 : 4;
+  const gente = (actual) => [...new Set([...responsables(), actual].filter(Boolean))];
+  const sel = (id, actual) => `<select id="${id}"><option value="">—</option>${gente(actual).map(r => `<option ${r === actual ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>`;
+  const progs = [...S.programas].sort((a, b) => (b.numero || 0) - (a.numero || 0));
+  const seccion = (i, titulo, quien, cuerpo) => `<details ${abierta === i ? 'open' : ''}><summary>${i} · ${titulo} <span class="nota">${quien}</span></summary><div class="cuerpo">${cuerpo}</div></details>`;
   const f = $('#f-nota');
   f.innerHTML = `
-    <h3>${n ? 'Editar nota' : 'Nueva nota'}</h3>
-    <label class="f"><span>Título de la nota</span><input id="n-titulo" required value="${esc(n?.titulo)}" placeholder="Ej: ADES · Aniversario 75 años"></label>
-    <div class="campos">
-      <label class="f"><span>Protagonista / entrevistado</span><input id="n-protagonista" value="${esc(n?.protagonista)}"></label>
-      <label class="f"><span>Pilar</span><select id="n-pilar"><option value="">—</option>${PILARES.map(p => `<option ${p === n?.pilar ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>
-    </div>
-    <div class="f"><span>Etapa</span><div class="opciones">${ETAPAS_NOTA.map((e, i) => `<button type="button" class="op" data-etapa-nota="${i}" aria-pressed="${(n?.etapa ?? 0) === i}">${e}</button>`).join('')}</div></div>
-    <div class="campos">
-      <label class="f"><span>Domingo de emisión</span><input id="n-emision" type="date" value="${esc(n?.emision)}"></label>
-      <label class="f"><span>Responsable</span><select id="n-responsable"><option value="">—</option>${resp.map(r => `<option ${r === (n?.responsable ?? S.yo.nombre) ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
-      <label class="f"><span>Duración del informe</span><input id="n-duracion" value="${esc(n?.duracion)}" placeholder="Ej: 1:30"></label>
-      <label class="f"><span>Carpeta</span><input id="n-carpeta" value="${esc(n?.carpeta)}" placeholder="Redes\\..."></label>
-    </div>
-    <div class="f"><span>Publicado</span><div class="checks">
-      <label><input type="checkbox" id="n-tv" ${n?.tv ? 'checked' : ''}> TV</label>
-      <label><input type="checkbox" id="n-ig" ${n?.ig ? 'checked' : ''}> Recap en IG</label>
-      <label><input type="checkbox" id="n-yt" ${n?.yt ? 'checked' : ''}> YouTube</label></div></div>
+    <h3>${n ? esc(n.titulo) : 'Nueva nota'}</h3>
+    ${n ? `<div class="nota">Etapa: <b>${ETAPAS_NOTA[e]}</b>${HINTS_NOTA[e] ? ' · ' + HINTS_NOTA[e] : ''}</div>` : '<div class="nota">Quien graba carga esto. Lo demás lo completan el editor y el coordinador.</div>'}
+    ${seccion(1, 'Grabación', 'quien graba', `
+      <label class="f"><span>Rótulo (título breve)</span><input id="n-titulo" required value="${esc(n?.titulo)}" placeholder="Ej: Mural Marino · Punta Ballena"></label>
+      <label class="f"><span>Entrevistados (nombre y @ de IG, uno por línea)</span><textarea id="n-entrevistados" placeholder="Paula Rodríguez @paulirodriguez.psi">${esc(n?.entrevistados)}</textarea></label>
+      <label class="f"><span>Link del crudo (Google Drive)</span><input id="n-crudo" type="url" value="${esc(n?.link_crudo)}" placeholder="https://drive.google.com/…"></label>
+      <label class="f"><span>Quién grabó</span>${sel('n-grabo', n ? n.grabo : S.yo.nombre)}</label>`)}
+    ${seccion(2, 'Edición', 'editor', `
+      <label class="f"><span>Quién edita</span>${sel('n-editor', n?.editor)}</label>
+      <label class="f"><span>Link nota completa (horizontal: TV y YouTube)</span><input id="n-completa" type="url" value="${esc(n?.link_completa)}" placeholder="https://drive.google.com/…"></label>
+      <label class="f"><span>Link recorte vertical (Reel y Short)</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
+    ${seccion(3, 'Coordinación', 'coordinador', `
+      <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
+      <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
+      <label class="f"><span>Título de YouTube</span><input id="n-yt-titulo" maxlength="100" value="${esc(n?.yt_titulo)}"></label>
+      <label class="f"><span>Descripción de YouTube</span><textarea id="n-yt-desc" rows="5">${esc(n?.yt_descripcion)}</textarea></label>
+      <div class="campos">
+        <label class="f"><span>Día de publicación en redes</span><input id="n-dia" type="date" value="${esc(n ? diaPub(n) : '')}"></label>
+        <label class="f"><span>Hora</span><input id="n-hora" type="time" value="${esc(n ? horaPub(n) : HORA_PUBLICAR)}"></label>
+      </div>
+      <div class="checks"><label><input type="checkbox" id="n-aprobado" ${n?.aprobado ? 'checked' : ''}> Textos y fecha aprobados: se puede publicar</label></div>`)}
+    ${seccion(4, 'Publicación', 'se completa sola al publicar', `
+      <label class="f"><span>Reel en IG</span><input id="n-link-ig" type="url" value="${esc(n?.link_ig)}"></label>
+      <label class="f"><span>Short en YouTube</span><input id="n-link-short" type="url" value="${esc(n?.link_yt_short)}"></label>
+      <label class="f"><span>Nota completa en YouTube</span><input id="n-link-ytc" type="url" value="${esc(n?.link_yt_completa)}"></label>`)}
     <label class="f"><span>Pendientes (uno por línea)</span><textarea id="n-pendientes">${esc(n?.pendientes)}</textarea></label>
     <div class="acciones" style="justify-content:space-between">
       <span id="n-borrar-zona">${n ? '<button type="button" class="btn danger" id="n-borrar">Borrar</button>' : ''}</span>
       <span class="acciones"><button type="button" class="btn quiet" id="n-cancelar">Cancelar</button><button type="submit" class="btn">Guardar</button></span>
     </div>`;
   f.dataset.id = n ? n.id : '';
-  f.dataset.etapa = String(n?.etapa ?? 0);
+  contarCopy();
   $('#d-nota').showModal();
 }
+function contarCopy() { const c = $('#n-copy'), s = $('#n-copy-cuenta'); if (c && s) { s.textContent = `(${c.value.length} de 2200)`; s.style.color = c.value.length > 2200 ? 'var(--bad, #c23b2a)' : ''; } }
+$('#f-nota').addEventListener('input', (ev) => { if (ev.target.id === 'n-copy') contarCopy(); });
 
 $('#f-nota').addEventListener('click', async (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   const f = $('#f-nota');
-  if (t.dataset.etapaNota) { f.dataset.etapa = t.dataset.etapaNota; f.querySelectorAll('[data-etapa-nota]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); }
   if (t.id === 'n-cancelar') $('#d-nota').close();
   if (t.id === 'n-borrar') { $('#n-borrar-zona').innerHTML = '<span class="acciones"><span class="nota">¿Borrar esta nota?</span><button type="button" class="btn danger" id="n-si">Sí, borrar</button><button type="button" class="btn quiet" id="n-no">No</button></span>'; }
   if (t.id === 'n-no') $('#n-borrar-zona').innerHTML = '<button type="button" class="btn danger" id="n-borrar">Borrar</button>';
-  if (t.id === 'n-si') { if (await escribir(sb.from('notas').delete().eq('id', f.dataset.id), 'Nota borrada.')) $('#d-nota').close(); }
+  if (t.id === 'n-si') { if (await escribir(sb.from('notas').delete().eq('id', f.dataset.id), 'Nota borrada.')) { $('#d-nota').close(); await cargar('notas'); render(); } }
 });
 $('#f-nota').addEventListener('submit', async (ev) => {
   ev.preventDefault();
-  const f = $('#f-nota');
+  const f = $('#f-nota'), val = (id) => $(id).value.trim();
   const body = {
-    titulo: $('#n-titulo').value.trim(), protagonista: $('#n-protagonista').value.trim(), pilar: $('#n-pilar').value,
-    etapa: Number(f.dataset.etapa || 0), emision: $('#n-emision').value || null, responsable: $('#n-responsable').value,
-    duracion: $('#n-duracion').value.trim(), carpeta: $('#n-carpeta').value.trim(),
-    tv: $('#n-tv').checked, ig: $('#n-ig').checked, yt: $('#n-yt').checked, pendientes: $('#n-pendientes').value.trim(),
+    titulo: val('#n-titulo'), entrevistados: val('#n-entrevistados'), link_crudo: val('#n-crudo'), grabo: $('#n-grabo').value,
+    editor: $('#n-editor').value, link_completa: val('#n-completa'), link_vertical: val('#n-vertical'),
+    programa_id: $('#n-programa').value || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
+    publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value), aprobado: $('#n-aprobado').checked,
+    link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
   };
-  if (!body.titulo) { toast('Poné un título.'); return; }
+  if (!body.titulo) { toast('Poné un rótulo.'); return; }
+  if (body.copy_ig.length > 2200) { toast('El copy de IG pasa los 2200 caracteres.'); return; }
+  if (body.aprobado && !body.publicar_el) { toast('Para aprobar, elegí el día de publicación.'); return; }
+  if (body.aprobado && !(body.copy_ig && body.yt_titulo)) { toast('Para aprobar, completá el copy de IG y el título de YouTube.'); return; }
+  if (body.aprobado && !body.link_vertical) { toast('Para aprobar falta el link del recorte vertical.'); return; }
   const q = f.dataset.id ? sb.from('notas').update(body).eq('id', f.dataset.id) : sb.from('notas').insert(body);
   if (await escribir(q, f.dataset.id ? 'Nota guardada.' : 'Nota creada.')) { $('#d-nota').close(); await cargar('notas'); render(); }
 });
