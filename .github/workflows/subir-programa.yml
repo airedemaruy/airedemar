@@ -1,0 +1,29 @@
+# Sube los 3 bloques de un programa (carpeta CANAL ONCE en Drive) a YouTube como privados.
+# Después, con el OK de Juandi, se cargan títulos y descripciones y se hacen públicos.
+name: Subir programa a YouTube
+
+on:
+  workflow_dispatch:
+    inputs:
+      numero:
+        description: Número de programa (ej. 31)
+        required: true
+
+concurrency:
+  group: subir-programa-${{ inputs.numero }}
+
+jobs:
+  subir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet google-api-python-client google-auth
+      - name: Subir bloques
+        run: python .github/publicar/subir_programa.py
+        env:
+          NUMERO: ${{ inputs.numero }}
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
