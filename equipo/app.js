@@ -414,7 +414,7 @@ function abrirNota(id) {
     ${seccion(2, 'Edición', 'editor', `
       <label class="f"><span>Quién edita</span>${sel('n-editor', n?.editor)}</label>
       <label class="f"><span>Link nota completa (horizontal: TV y YouTube)</span><input id="n-completa" type="url" value="${esc(n?.link_completa)}" placeholder="https://drive.google.com/…"></label>
-      <label class="f"><span>Link recorte vertical (Reel y Short)</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
+      <label class="f"><span>Link recorte vertical (Reel y Short) · exportar en 1080×1920, menos de 300 MB</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
     ${seccion(3, 'Coordinación', 'coordinador', `
       <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
