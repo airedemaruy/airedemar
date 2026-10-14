@@ -1,0 +1,35 @@
+# Publica un programa en YouTube: 3 bloques + programa completo (código en .github/publicar/programa.py).
+name: Publicar programa
+
+on:
+  workflow_dispatch:
+    inputs:
+      programa_id:
+        description: ID del programa en la app (ej. p31)
+        required: true
+      cuando:
+        description: Hora de publicación (ISO, UTC)
+        required: true
+
+concurrency:
+  group: programa-${{ inputs.programa_id }}
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install --quiet google-api-python-client google-auth requests
+      - name: Publicar programa
+        run: python .github/publicar/programa.py
+        env:
+          PROGRAMA_ID: ${{ inputs.programa_id }}
+          CUANDO: ${{ inputs.cuando }}
+          PUB_SECRETO: ${{ secrets.PUB_SECRETO }}
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
