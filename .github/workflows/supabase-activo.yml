@@ -1,0 +1,23 @@
+# Mantiene activa la base de Supabase de la app del equipo.
+# El plan gratis la pausa tras 7 días sin uso; esto le hace una consulta cada 2 días.
+# Usa la clave pública (anon) que ya está en equipo/app.js. Si falla, GitHub avisa por mail.
+name: Mantener Supabase activo
+
+on:
+  schedule:
+    - cron: "0 13 */2 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consultar la base
+        run: |
+          URL=$(grep -oP "SUPABASE_URL\s*=\s*'\K[^']+" equipo/app.js)
+          KEY=$(grep -oP "SUPABASE_ANON\s*=\s*'\K[^']+" equipo/app.js)
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/equipo?select=*&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          echo "Respuesta de Supabase: $code"
+          test "$code" -lt 300
