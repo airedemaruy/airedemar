@@ -178,6 +178,7 @@ function render() {
   if (S.tab === 'metricas') renderMetricas();
   if (S.tab === 'equipo') renderEquipo();
   if (S.abierta) renderFicha();
+  refrescarPubAbierta();
 }
 
 /* ================= PROGRAMAS ================= */
@@ -457,7 +458,7 @@ function abrirNota(id) {
         <label class="f"><span>Día de publicación en redes</span><input id="n-dia" type="date" value="${esc(n ? diaPub(n) : '')}"></label>
         <label class="f"><span>Hora</span><input id="n-hora" type="time" value="${esc(n ? horaPub(n) : HORA_PUBLICAR)}"></label>
       </div>
-      ${n ? `<div class="publicar">${estadoPub(n)}<div class="acciones" id="n-pub-zona">${botonesPub(n)}</div></div>` : ''}`)}
+      ${n ? `<div class="publicar" id="n-pub" data-clave="${esc(clavePub(n))}">${bloquePub(n)}</div>` : ''}`)}
     ${seccion(5, 'Publicación', 'se completa sola al publicar', `
       <label class="f"><span>Reel en IG</span><input id="n-link-ig" type="url" value="${esc(n?.link_ig)}"></label>
       <label class="f"><span>Short en YouTube</span><input id="n-link-short" type="url" value="${esc(n?.link_yt_short)}"></label>
@@ -558,9 +559,31 @@ function estadoPub(n) {
   }[n.pub_estado] || n.pub_detalle;
   return txt ? `<div class="nota pub-estado ${esc(n.pub_estado)}">${esc(txt)}</div>` : '';
 }
+/* Publicación en curso (1-99 %): círculo de avance que se actualiza en vivo con los cambios de la base. */
+const enCurso = (n) => n.pub_progreso > 0 && n.pub_progreso < 100;
+const clavePub = (n) => `${n.pub_progreso}|${n.pub_estado}|${n.pub_detalle}`;
+function progresoPub(n) {
+  const p = Math.max(0, Math.min(100, n.pub_progreso)), largo = 113.1;
+  return `<div class="progreso" role="status" aria-live="polite">
+    <span class="anillo"><svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="18" class="fondo"/><circle cx="22" cy="22" r="18" class="avance" style="stroke-dashoffset:${(largo * (1 - p / 100)).toFixed(1)}"/></svg><b>${p}%</b></span>
+    <div><b>${n.pub_estado === 'publicando' ? 'Publicando en Instagram y YouTube' : 'Probando sin publicar'}</b><div class="nota">${esc(n.pub_detalle || 'Arrancando…')}</div>
+    <div class="nota">Podés cerrar esta ventana: sigue sola.</div></div>
+  </div>`;
+}
+function bloquePub(n) {
+  if (enCurso(n)) return progresoPub(n);
+  const errorEnsayo = n.pub_progreso === -1 && n.pub_estado !== 'error' ? `<div class="nota pub-estado error">⚠️ ${esc(n.pub_detalle)}</div>` : '';
+  return `${errorEnsayo || estadoPub(n)}<div class="acciones" id="n-pub-zona">${botonesPub(n)}</div>`;
+}
+function refrescarPubAbierta() {
+  const caja = $('#n-pub'), id = $('#f-nota').dataset.id;
+  if (!caja || !$('#d-nota').open || !id) return;
+  const n = S.notas.find(x => x.id === id);
+  if (n && caja.dataset.clave !== clavePub(n)) { caja.dataset.clave = clavePub(n); caja.innerHTML = bloquePub(n); }
+}
 function botonesPub(n) {
   if (!puedePublicar()) return '<span class="nota">Programan y publican Floppy o Juandi.</span>';
-  if (n.pub_estado === 'publicando') return '';
+  if (n.pub_estado === 'publicando' || n.pub_estado === 'publicada') return '';
   const ensayo = '<button type="button" class="btn quiet small" id="n-ensayo" title="Hace todo el recorrido sin publicar nada">Probar sin publicar</button>';
   if (n.pub_estado === 'programada') return `<button type="button" class="btn" id="n-programar">Reprogramar</button><button type="button" class="btn quiet" id="n-cancelar-pub">Cancelar programación</button>${ensayo}`;
   return `<button type="button" class="btn" id="n-programar">Programar</button><button type="button" class="btn quiet" id="n-publicar-ahora">Publicar ahora</button>${ensayo}`;
@@ -568,9 +591,8 @@ function botonesPub(n) {
 async function llamarPublicar(id, cuando, ensayo = false) {
   const { data, error } = await sb.rpc('publicar_nota', { p_id: id, p_cuando: cuando, p_ensayo: ensayo });
   if (error) { toast('No se pudo: ' + error.message); return false; }
-  toast({ programada: 'Programada. Sale sola a esa hora en IG y YouTube.', publicando: 'Publicando: en unos minutos aparecen los links en la nota.',
-          ensayo: 'Ensayo en curso: en unos 3 minutos aparece el resultado en la nota.' }[data] || 'Listo.');
-  return true;
+  if (data === 'programada') toast('Programada. Sale sola a esa hora en IG y YouTube.');
+  return data;
 }
 async function accionPub(t) {
   const f = $('#f-nota'), id = f.dataset.id, body = leerFormNota(), err = errorNota(body);
@@ -590,9 +612,14 @@ async function accionPub(t) {
       if (new Date(body.publicar_el) < new Date(Date.now() + 11 * 60000)) { toast('Para dentro de menos de 11 minutos usá "Publicar ahora".'); return; }
     }
     if (!(await guardarNota(body))) return;
-    const ok = t.id === 'n-ensayo' ? await llamarPublicar(id, null, true)
+    const res = t.id === 'n-ensayo' ? await llamarPublicar(id, null, true)
       : await llamarPublicar(id, t.id === 'n-programar' ? body.publicar_el : null);
-    if (!ok) return;
+    if (!res) return;
+    if (res === 'publicando' || res === 'ensayo') {
+      // La nota queda abierta mostrando el avance; se actualiza sola con cada paso.
+      await cargar('notas'); render(); refrescarPubAbierta();
+      return;
+    }
   }
   $('#d-nota').close(); await cargar('notas'); render();
 }

@@ -31,6 +31,7 @@ SECRETO = os.environ["PUB_SECRETO"]
 REPO = os.environ["GITHUB_REPOSITORY"]
 IG_API = "https://graph.instagram.com/v23.0"
 VIDEO = "/tmp/vertical.mp4"
+UY = timezone(timedelta(hours=-3))  # Uruguay, sin horario de verano
 
 
 def supabase():
@@ -79,6 +80,7 @@ def main():
     nota, ig_token = datos["nota"], datos["ig_token"]
     log(f"Nota: {nota['titulo']} | {'ENSAYO (no se publica)' if ENSAYO else 'publicar a las ' + CUANDO.isoformat()}")
 
+    avisar(pub_progreso=10, pub_detalle="Bajando el video de Drive…")
     creds = Credentials.from_authorized_user_info(json.loads(os.environ["GOOGLE_TOKEN"]))
     creds.refresh(Request())
 
@@ -92,6 +94,7 @@ def main():
         while not listo:
             _, listo = bajada.next_chunk()
     log(f"Video bajado de Drive ({int(meta['size']) // 2**20} MB)")
+    avisar(pub_progreso=25, pub_detalle="Subiendo a YouTube…")
 
     # 2. YouTube: privado + publishAt (o privado y se borra, si es ensayo)
     yt = build("youtube", "v3", credentials=creds)
@@ -110,8 +113,10 @@ def main():
     if ENSAYO:
         yt.videos().delete(id=vid).execute()
         log("YouTube OK (ensayo: se subió privado y se borró)")
+        avisar(pub_progreso=50, pub_detalle="YouTube respondió bien. Subiendo a Instagram…")
     else:
-        avisar(link_yt_short=f"https://youtu.be/{vid}", pub_detalle="YouTube listo. Subiendo a Instagram…")
+        avisar(link_yt_short=f"https://youtu.be/{vid}", pub_progreso=50,
+               pub_detalle=f"YouTube listo (sale a las {publicar_yt.astimezone(UY):%H:%M}). Subiendo a Instagram…")
         log(f"YouTube OK: programado para {publicar_yt.isoformat()}")
 
     # 3. Instagram: adjunto temporal en una release + Reel con video_url
@@ -140,6 +145,7 @@ def main():
                     sin_invitar.append(u)
             cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(validos)} if validos else {})})["id"]
             log(f"{len(sin_invitar)} collab(s) no se pudieron invitar (cuenta privada o usuario inexistente)")
+        avisar(pub_progreso=65, pub_detalle="Instagram está procesando el video…")
         aviso_collabs = f" No se pudo invitar como collab a: {', '.join('@' + u for u in sin_invitar)} (cuenta privada o usuario mal escrito)." if sin_invitar else ""
         for _ in range(90):
             st = ig("GET", cont, ig_token, params={"fields": "status_code,status"})
@@ -151,15 +157,18 @@ def main():
         log("Instagram procesó el video")
         if ENSAYO:
             log("Ensayo: no se publica en Instagram")
-            avisar(pub_detalle=f"Ensayo OK {datetime.now(timezone.utc):%d/%m %H:%M} UTC: Drive, YouTube e Instagram respondieron bien. No se publicó nada.{aviso_collabs}")
+            avisar(pub_progreso=100, pub_detalle=f"Ensayo OK {datetime.now(UY):%d/%m %H:%M}: Drive, YouTube e Instagram respondieron bien. No se publicó nada.{aviso_collabs}")
             return
         espera = (CUANDO - datetime.now(timezone.utc)).total_seconds()
+        avisar(pub_progreso=85, pub_detalle="Instagram procesó el video. Publicando…" if espera <= 0
+               else f"Todo listo. Sale a las {CUANDO.astimezone(UY):%H:%M}…")
         if espera > 0:
             log(f"Esperando {int(espera)}s hasta la hora de publicación")
             time.sleep(espera)
         media = ig("POST", f"{uid}/media_publish", ig_token, data={"creation_id": cont})["id"]
         link = ig("GET", media, ig_token, params={"fields": "permalink"}).get("permalink", "")
-        avisar(link_ig=link, pub_estado="publicada", pub_detalle=f"Publicada el {datetime.now(timezone.utc):%d/%m %H:%M} UTC.{aviso_collabs}")
+        avisar(link_ig=link, pub_estado="publicada", pub_progreso=100,
+               pub_detalle=f"Publicada el {datetime.now(UY):%d/%m %H:%M}. El Short sale en YouTube a las {publicar_yt.astimezone(UY):%H:%M}.{aviso_collabs}")
         log("Instagram OK: publicado")
     finally:
         subprocess.run(["gh", "release", "delete", tag, "--repo", REPO, "--yes", "--cleanup-tag"], capture_output=True)
@@ -180,6 +189,6 @@ if __name__ == "__main__":
     except Exception as e:  # el detalle va a la app; el registro público solo dice que falló
         log("Falló la publicación")
         try:
-            avisar(pub_estado="error" if not ENSAYO else None, pub_detalle=f"Error: {str(e)[:300]}")
+            avisar(pub_estado="error" if not ENSAYO else None, pub_progreso=-1, pub_detalle=f"Error: {str(e)[:300]}")
         finally:
             sys.exit(1)

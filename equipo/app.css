@@ -217,6 +217,17 @@ dialog h3 { font-size: 22px; }
 .pub-estado { padding: 8px 10px; border-radius: 8px; background: var(--surface-2); color: var(--ink); }
 .pub-estado.error { background: var(--alert-soft); }
 .pub-estado.publicada { background: var(--ok-soft); }
+.progreso { display: flex; gap: 14px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--sea-soft); }
+.anillo { position: relative; width: 52px; height: 52px; flex: none; display: grid; place-items: center; }
+.anillo svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.anillo circle { fill: none; stroke-width: 4; }
+.anillo .fondo { stroke: var(--line); }
+.anillo .avance { stroke: var(--teal); stroke-linecap: round; stroke-dasharray: 113.1; transition: stroke-dashoffset .8s ease; }
+.anillo b { font-size: 12px; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: no-preference) {
+  .anillo::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--teal); opacity: .35; animation: girar 1.4s linear infinite; }
+}
+@keyframes girar { to { transform: rotate(360deg); } }
 .notas-prog { display: grid; gap: 4px; min-width: 0; }
 .tv-dia { font-size: 11px; font-weight: 600; color: var(--teal); letter-spacing: .04em; }
 #f-nota details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
