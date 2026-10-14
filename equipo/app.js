@@ -1,4 +1,4 @@
-/* App interna de Aire de Mar: Producción, Sponsors, Métricas y Equipo sobre Supabase.
+/* App interna de Aire de Mar: Programas, Informes, Sponsors, Métricas y Equipo sobre Supabase.
    La clave de acá es la pública (anon): lo que protege los datos son las reglas RLS de la base,
    que solo dejan leer y escribir a quien figura en la tabla "equipo". */
 const SUPABASE_URL = 'https://rwxrwwuddwuzberqmela.supabase.co';
@@ -11,6 +11,8 @@ const emailDe = (usuario) => {
 };
 
 const ETAPAS_NOTA = ['Grabada', 'Corte', 'Edición', 'Copies', 'Lista', 'Salió'];
+const ETAPAS_PROG = ['Planificado', 'Grabado', 'En edición', 'Entregado al canal', 'Salió'];
+const SALIO_VISIBLES = 6;
 const PILARES = ['Deportistas y protagonistas', 'Deporte en acción', 'Medio ambiente y comunidad', 'Cultura del mar', 'Detrás de cámaras', 'Educación y tips'];
 const ETAPAS_EMP = [
   { id: 'prospecto', label: 'Prospecto', hint: 'Encaja, falta el contacto' },
@@ -28,13 +30,13 @@ const ESTADOS_MAIL = { borrador: 'Borrador en Gmail', enviado: 'Enviado', respon
 const PASOS = { 1: 'Mail 1', 2: 'Seguimiento', 3: 'Último mail' };
 const GMAIL_BORRADORES = 'https://mail.google.com/mail/u/?authuser=airedemar.uy@gmail.com#drafts';
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const TABLAS = ['notas', 'empresas', 'contactos', 'envios', 'plantillas', 'paquetes', 'config', 'metricas', 'equipo'];
+const TABLAS = ['programas', 'notas', 'empresas', 'contactos', 'envios', 'plantillas', 'paquetes', 'config', 'metricas', 'equipo'];
 
 function vistaGuardada() { try { return localStorage.getItem('calVista') === 'lista' ? 'lista' : 'clasico'; } catch (_) { return 'clasico'; } }
 const S = {
-  yo: null, tab: 'produccion', calVista: vistaGuardada(), calMes: new Date(), subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
+  yo: null, tab: 'programas', progTodos: false, calVista: vistaGuardada(), calMes: new Date(), subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
   abierta: null, borrador: null, cargado: false, conCuenta: null, claves: {}, nivel: '', acuerdo: '',
-  notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
+  programas: [], notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
 };
 let canal = null;
 
@@ -155,8 +157,9 @@ function render() {
   document.querySelectorAll('.nav button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
   const pend = S.envios.filter(e => e.estado === 'borrador').length;
   $('#t-sponsors').innerHTML = 'Sponsors' + (pend ? `<span class="badge">${pend}</span>` : '');
-  for (const t of ['produccion', 'calendario', 'sponsors', 'metricas', 'equipo']) $('#v-' + t).hidden = S.tab !== t;
-  if (S.tab === 'produccion') renderProduccion();
+  for (const t of ['programas', 'informes', 'calendario', 'sponsors', 'metricas', 'equipo']) $('#v-' + t).hidden = S.tab !== t;
+  if (S.tab === 'programas') renderProgramas();
+  if (S.tab === 'informes') renderInformes();
   if (S.tab === 'calendario') renderCalendario();
   if (S.tab === 'sponsors') renderSponsors();
   if (S.tab === 'metricas') renderMetricas();
@@ -164,7 +167,92 @@ function render() {
   if (S.abierta) renderFicha();
 }
 
-/* ================= PRODUCCIÓN ================= */
+/* ================= PROGRAMAS ================= */
+function tarjetaPrograma(p) {
+  const fecha = p.fecha ? `<span class="chip line">dom ${esc(fechaCorta(p.fecha))}</span>` : '<span class="chip warn">sin fecha</span>';
+  const yt = `<span class="pubs"><span class="pub ${p.yt ? 'on' : ''}">YT</span></span>`;
+  const falta = p.etapa >= 4 && !p.yt ? '<span class="flags"><span class="chip alert">falta YouTube</span></span>' : '';
+  return `<div class="card" role="button" tabindex="0" draggable="true" data-prog="${esc(p.id)}">
+    <span class="tt"><span>${p.numero ? 'ADM #' + esc(p.numero) : 'Programa'}</span></span>
+    ${p.invitado ? `<span class="meta">${esc(p.invitado)}</span>` : ''}
+    <span class="flags">${fecha}${yt}</span>
+    ${falta}
+    ${p.pendientes ? `<span class="pend">${esc(p.pendientes)}</span>` : ''}
+  </div>`;
+}
+
+function renderProgramas() {
+  const v = $('#v-programas');
+  const ps = S.programas, dom = iso(proximoDomingo());
+  const prox = ps.find(p => p.fecha === dom);
+  const stats = [
+    [prox ? '#' + (prox.numero ?? '') : '—', prox ? `este domingo · ${prox.invitado || 'sin invitado'}` : 'no hay programa cargado para este domingo', !prox],
+    [ps.filter(p => p.etapa < 3).length, 'en producción'],
+    [ps.filter(p => p.etapa === 3).length, 'entregados al canal'],
+    [ps.filter(p => p.etapa >= 4 && !p.yt).length, 'salieron y faltan en YouTube', ps.some(p => p.etapa >= 4 && !p.yt)],
+  ];
+  v.innerHTML = `
+    <div class="tira">${stats.map(([n, l, a]) => `<div class="${a ? 'alerta' : ''}"><span class="n">${n}</span><span class="l">${esc(l)}</span></div>`).join('')}</div>
+    <div class="barra"><span></span><div class="herr"><button class="btn" data-nuevo-programa>+ Nuevo programa</button></div></div>
+    <div class="tablero">${ETAPAS_PROG.map((et, i) => {
+      const fin = i === ETAPAS_PROG.length - 1;
+      let items = ps.filter(p => p.etapa === i).sort((a, b) => (a.fecha || '9').localeCompare(b.fecha || '9'));
+      if (fin) items.reverse();
+      const ocultos = fin && !S.progTodos ? Math.max(items.length - SALIO_VISIBLES, 0) : 0;
+      const mas = fin && items.length > SALIO_VISIBLES
+        ? `<button class="btn quiet small" data-prog-todos>${S.progTodos ? 'Ver solo los últimos' : `Ver ${ocultos} anteriores`}</button>` : '';
+      if (ocultos) items = items.slice(0, SALIO_VISIBLES);
+      return `<div class="col ${fin ? 'fin' : ''}" data-soltar-etapa="${i}"><h3><span>${et}</span><span>${ps.filter(p => p.etapa === i).length}</span></h3><div class="cards">${items.length ? items.map(tarjetaPrograma).join('') : '<div class="vacio">Nada acá.</div>'}${mas}</div></div>`;
+    }).join('')}</div>`;
+}
+
+function abrirPrograma(id) {
+  const p = id ? S.programas.find(x => x.id === id) : null;
+  const ultimo = [...S.programas].sort((a, b) => (b.numero || 0) - (a.numero || 0))[0];
+  let fechaNueva = '';
+  if (!p && ultimo?.fecha) { const d = parse(ultimo.fecha); d.setDate(d.getDate() + 7); fechaNueva = iso(d); }
+  const f = $('#f-programa');
+  f.innerHTML = `
+    <h3>${p ? 'Editar programa' : 'Nuevo programa'}</h3>
+    <div class="campos">
+      <label class="f"><span>Número</span><input id="p-numero" type="number" min="1" value="${esc(p ? p.numero : (ultimo?.numero || 0) + 1)}"></label>
+      <label class="f"><span>Domingo de emisión</span><input id="p-fecha" type="date" value="${esc(p ? p.fecha : fechaNueva)}"></label>
+    </div>
+    <label class="f"><span>Invitado</span><input id="p-invitado" value="${esc(p?.invitado)}"></label>
+    <div class="f"><span>Etapa</span><div class="opciones">${ETAPAS_PROG.map((e, i) => `<button type="button" class="op" data-etapa-prog="${i}" aria-pressed="${(p?.etapa ?? 0) === i}">${e}</button>`).join('')}</div></div>
+    <label class="f"><span>Carpeta (dentro de Programas\\2026)</span><input id="p-carpeta" value="${esc(p?.carpeta)}"></label>
+    <div class="f"><span>Publicado</span><div class="checks"><label><input type="checkbox" id="p-yt" ${p?.yt ? 'checked' : ''}> YouTube (los 3 bloques)</label></div></div>
+    <label class="f"><span>Pendientes (uno por línea)</span><textarea id="p-pendientes">${esc(p?.pendientes)}</textarea></label>
+    <div class="acciones" style="justify-content:space-between">
+      <span id="p-borrar-zona">${p ? '<button type="button" class="btn danger" id="p-borrar">Borrar</button>' : ''}</span>
+      <span class="acciones"><button type="button" class="btn quiet" id="p-cancelar">Cancelar</button><button type="submit" class="btn">Guardar</button></span>
+    </div>`;
+  f.dataset.id = p ? p.id : '';
+  f.dataset.etapa = String(p?.etapa ?? 0);
+  $('#d-programa').showModal();
+}
+
+$('#f-programa').addEventListener('click', async (ev) => {
+  const t = ev.target.closest('button'); if (!t) return;
+  const f = $('#f-programa');
+  if (t.dataset.etapaProg) { f.dataset.etapa = t.dataset.etapaProg; f.querySelectorAll('[data-etapa-prog]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); }
+  if (t.id === 'p-cancelar') $('#d-programa').close();
+  if (t.id === 'p-borrar') { $('#p-borrar-zona').innerHTML = '<span class="acciones"><span class="nota">¿Borrar este programa?</span><button type="button" class="btn danger" id="p-si">Sí, borrar</button><button type="button" class="btn quiet" id="p-no">No</button></span>'; }
+  if (t.id === 'p-no') $('#p-borrar-zona').innerHTML = '<button type="button" class="btn danger" id="p-borrar">Borrar</button>';
+  if (t.id === 'p-si') { if (await escribir(sb.from('programas').delete().eq('id', f.dataset.id), 'Programa borrado.')) { $('#d-programa').close(); await cargar('programas'); render(); } }
+});
+$('#f-programa').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = $('#f-programa');
+  const body = {
+    numero: Number($('#p-numero').value) || null, fecha: $('#p-fecha').value || null, invitado: $('#p-invitado').value.trim(),
+    etapa: Number(f.dataset.etapa || 0), carpeta: $('#p-carpeta').value.trim(), yt: $('#p-yt').checked, pendientes: $('#p-pendientes').value.trim(),
+  };
+  const q = f.dataset.id ? sb.from('programas').update(body).eq('id', f.dataset.id) : sb.from('programas').insert(body);
+  if (await escribir(q, f.dataset.id ? 'Programa guardado.' : 'Programa creado.')) { $('#d-programa').close(); await cargar('programas'); render(); }
+});
+
+/* ================= INFORMES ================= */
 function notasFiltradas() { return S.resp ? S.notas.filter(n => n.responsable === S.resp) : S.notas; }
 
 function tarjetaNota(n) {
@@ -194,8 +282,8 @@ function chipNota(n) {
   return `<div class="chip-nota e${n.etapa}" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}" title="${esc(n.titulo)}${n.responsable ? ' · ' + esc(n.responsable) : ''}">${esc(n.titulo)}</div>`;
 }
 
-function renderProduccion() {
-  const v = $('#v-produccion');
+function renderInformes() {
+  const v = $('#v-informes');
   const ns = S.notas, dom = iso(proximoDomingo());
   const stats = [
     [ns.filter(n => n.etapa < 4).length, 'en producción'],
@@ -252,18 +340,19 @@ function renderCalendario() {
   v.innerHTML = barraNotas(izq) + cuerpo;
 }
 
-/* ---------- arrastrar tarjetas: en el tablero cambia la etapa, en el calendario el domingo ---------- */
-async function moverNota(id, cambio) {
-  const n = S.notas.find(x => x.id === id);
+/* ---------- arrastrar tarjetas: en los tableros cambia la etapa, en el calendario el domingo ---------- */
+async function mover(tabla, id, cambio) {
+  const n = S[tabla].find(x => x.id === id);
   if (!n || Object.keys(cambio).every(k => n[k] === cambio[k])) return;
   const antes = { ...n };
   Object.assign(n, cambio); render();
-  if (!(await escribir(sb.from('notas').update(cambio).eq('id', id)))) { Object.assign(n, antes); render(); }
+  if (!(await escribir(sb.from(tabla).update(cambio).eq('id', id)))) { Object.assign(n, antes); render(); }
 }
 let arrastrando = null;
 document.addEventListener('dragstart', (ev) => {
-  const c = ev.target.closest && ev.target.closest('[draggable="true"][data-nota]'); if (!c) return;
-  arrastrando = c.dataset.nota; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', arrastrando);
+  const c = ev.target.closest && ev.target.closest('[draggable="true"][data-nota], [draggable="true"][data-prog]'); if (!c) return;
+  arrastrando = c.dataset.prog ? { tabla: 'programas', id: c.dataset.prog } : { tabla: 'notas', id: c.dataset.nota };
+  ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', arrastrando.id);
   setTimeout(() => c.classList.add('arrastrando'), 0);
 });
 document.addEventListener('dragend', () => { arrastrando = null; document.querySelectorAll('.arrastrando, .sobre').forEach(e => e.classList.remove('arrastrando', 'sobre')); });
@@ -274,9 +363,9 @@ document.addEventListener('dragleave', (ev) => { const d = destino(ev); if (d &&
 document.addEventListener('drop', (ev) => {
   const d = arrastrando && destino(ev); if (!d) return;
   ev.preventDefault();
-  const id = arrastrando; arrastrando = null;
-  if (d.dataset.soltarEtapa !== undefined) moverNota(id, { etapa: Number(d.dataset.soltarEtapa) });
-  else moverNota(id, { emision: d.dataset.soltarFecha || null });
+  const { tabla, id } = arrastrando; arrastrando = null;
+  if (d.dataset.soltarEtapa !== undefined) mover(tabla, id, { etapa: Number(d.dataset.soltarEtapa) });
+  else if (tabla === 'notas') mover(tabla, id, { emision: d.dataset.soltarFecha || null });
 });
 
 function abrirNota(id) {
@@ -628,11 +717,14 @@ function renderEquipo() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async (ev) => {
-  const t = ev.target.closest('button, tr[data-empresa], [data-nota]');
-  if (!t || t.closest('#f-nota') || t.closest('#f-login') || t.closest('#f-cuenta')) return;
+  const t = ev.target.closest('button, tr[data-empresa], [data-nota], [data-prog]');
+  if (!t || t.closest('#f-nota') || t.closest('#f-programa') || t.closest('#f-login') || t.closest('#f-cuenta')) return;
   if (t.dataset.tab) { S.tab = t.dataset.tab; render(); return; }
   if (t.dataset.subsp) { S.subSp = t.dataset.subsp; render(); return; }
   if (t.dataset.nota) { abrirNota(t.dataset.nota); return; }
+  if (t.dataset.prog) { abrirPrograma(t.dataset.prog); return; }
+  if (t.hasAttribute('data-nuevo-programa')) { abrirPrograma(null); return; }
+  if (t.hasAttribute('data-prog-todos')) { S.progTodos = !S.progTodos; render(); return; }
   if (t.dataset.calvista) { S.calVista = t.dataset.calvista; try { localStorage.setItem('calVista', S.calVista); } catch (_) {} render(); return; }
   if (t.dataset.calmes) { S.calMes = t.dataset.calmes === 'hoy' ? new Date() : new Date(S.calMes.getFullYear(), S.calMes.getMonth() + Number(t.dataset.calmes), 1); render(); return; }
   if (t.hasAttribute('data-nueva-nota')) { abrirNota(null); return; }
@@ -659,7 +751,11 @@ document.addEventListener('click', async (ev) => {
 $('#velo').addEventListener('click', cerrarFicha);
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && S.abierta) cerrarFicha(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.fpass) { ev.preventDefault(); ev.target.closest('.acciones').querySelector('[data-pass], [data-activar]').click(); } });
-document.addEventListener('keydown', (ev) => { const c = ev.target.dataset && ev.target.getAttribute('role') === 'button' && ev.target.dataset.nota; if (c && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); abrirNota(c); } });
+document.addEventListener('keydown', (ev) => {
+  const d = ev.target.dataset; if (!d || ev.target.getAttribute('role') !== 'button' || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  if (d.nota) { ev.preventDefault(); abrirNota(d.nota); }
+  if (d.prog) { ev.preventDefault(); abrirPrograma(d.prog); }
+});
 document.addEventListener('input', (ev) => {
   const k = ev.target.dataset && ev.target.dataset.k;
   if (k && S.borrador) { S.borrador[k] = ev.target.value; const m = $('#msg-empresa'); if (m) m.textContent = 'Cambios sin guardar'; return; }

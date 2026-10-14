@@ -34,7 +34,8 @@
       <div class="yo"><span id="yo-nombre"></span><button class="btn quiet small" id="b-cuenta">Mi contraseña</button><button class="btn quiet small" id="b-salir">Salir</button></div>
     </div>
     <nav class="nav" role="tablist">
-      <button role="tab" data-tab="produccion" aria-selected="true">Producción</button>
+      <button role="tab" data-tab="programas" aria-selected="true">Programas</button>
+      <button role="tab" data-tab="informes" aria-selected="false">Informes</button>
       <button role="tab" data-tab="calendario" aria-selected="false">Calendario</button>
       <button role="tab" data-tab="sponsors" aria-selected="false" id="t-sponsors">Sponsors</button>
       <button role="tab" data-tab="metricas" aria-selected="false">Métricas</button>
@@ -43,7 +44,8 @@
   </header>
   <main>
     <div class="aviso" id="aviso" hidden></div>
-    <section id="v-produccion"></section>
+    <section id="v-programas"></section>
+    <section id="v-informes" hidden></section>
     <section id="v-calendario" hidden></section>
     <section id="v-sponsors" hidden></section>
     <section id="v-metricas" hidden></section>
@@ -55,6 +57,7 @@
 <aside class="ficha" id="ficha" hidden aria-label="Ficha de empresa"></aside>
 
 <dialog id="d-nota"><form id="f-nota" method="dialog"></form></dialog>
+<dialog id="d-programa"><form id="f-programa" method="dialog"></form></dialog>
 <dialog id="d-cuenta">
   <form id="f-cuenta" method="dialog">
     <h3>Cambiar mi contraseña</h3>
