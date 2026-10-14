@@ -443,6 +443,7 @@ function abrirNota(id) {
     ${seccion(4, 'Coordinación', 'coordinador', `
       <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
+      <div><button type="button" class="btn quiet small" id="n-desde-copy">Completar YouTube desde el copy</button></div>
       <label class="f"><span>Título de YouTube</span><input id="n-yt-titulo" maxlength="100" value="${esc(n?.yt_titulo)}"></label>
       <label class="f"><span>Descripción de YouTube</span><textarea id="n-yt-desc" rows="5">${esc(n?.yt_descripcion)}</textarea></label>
       <div class="campos">
@@ -463,6 +464,24 @@ function abrirNota(id) {
   contarCopy();
   $('#d-nota').showModal();
 }
+/* Título y descripción de YouTube armados con reglas a partir del copy de IG (sin IA, gratis). */
+const SUFIJO_SHORT = ' | Aire de Mar #Shorts';
+const sinEmojis = (s) => s.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, '').replace(/\s{2,}/g, ' ').trim();
+const SOLO_IG = /nota completa|canal de youtube|\breel\b|link en (la )?bio/i;
+function youtubeDesdeCopy(copy, linkCompleta) {
+  const lineas = copy.split('\n');
+  const primera = sinEmojis(lineas.find(l => sinEmojis(l)) || '');
+  const frase = (primera.match(/^.+?[.!?](?=\s|$)/) || [primera])[0];
+  const max = 100 - SUFIJO_SHORT.length;
+  const titulo = (frase.length > max ? frase.slice(0, max - 1).replace(/\s+\S*$/, '') + '…' : frase) + SUFIJO_SHORT;
+  const cuerpo = lineas.filter(l => !SOLO_IG.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const hashtags = cuerpo.match(/^(#\S+\s*)+$/m);
+  const sinTags = hashtags ? cuerpo.replace(hashtags[0], '').trim() : cuerpo;
+  const descripcion = [sinTags, linkCompleta ? `Nota completa en nuestro Canal de YouTube: ${linkCompleta}` : 'Nota completa en nuestro Canal de YouTube.',
+    'Domingos 17:30 por Canal Once Punta del Este.', hashtags ? hashtags[0].trim() : ''].filter(Boolean).join('\n\n');
+  return { titulo, descripcion };
+}
+
 function contarCopy() { const c = $('#n-copy'), s = $('#n-copy-cuenta'); if (c && s) { s.textContent = `(${c.value.length} de 2200)`; s.style.color = c.value.length > 2200 ? 'var(--bad, #c23b2a)' : ''; } }
 $('#f-nota').addEventListener('input', (ev) => { if (ev.target.id === 'n-copy') contarCopy(); });
 
@@ -470,6 +489,13 @@ $('#f-nota').addEventListener('click', async (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   const f = $('#f-nota');
   if (t.id === 'n-cancelar') $('#d-nota').close();
+  if (t.id === 'n-desde-copy') {
+    const copy = $('#n-copy').value.trim();
+    if (!copy) { toast('Primero escribí el copy de IG.'); return; }
+    const { titulo, descripcion } = youtubeDesdeCopy(copy, $('#n-link-ytc').value.trim());
+    $('#n-yt-titulo').value = titulo; $('#n-yt-desc').value = descripcion;
+    toast('Título y descripción listos. Revisalos y guardá.');
+  }
   if (t.id === 'n-borrar') { $('#n-borrar-zona').innerHTML = '<span class="acciones"><span class="nota">¿Borrar esta nota?</span><button type="button" class="btn danger" id="n-si">Sí, borrar</button><button type="button" class="btn quiet" id="n-no">No</button></span>'; }
   if (t.id === 'n-no') $('#n-borrar-zona').innerHTML = '<button type="button" class="btn danger" id="n-borrar">Borrar</button>';
   if (t.id === 'n-si') { if (await escribir(sb.from('notas').delete().eq('id', f.dataset.id), 'Nota borrada.')) { $('#d-nota').close(); await cargar('notas'); render(); } }
