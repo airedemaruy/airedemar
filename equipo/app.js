@@ -10,7 +10,7 @@ const emailDe = (usuario) => {
   return u.includes('@') ? u : `airedemar.uy+${u}@gmail.com`;
 };
 
-const ETAPAS_NOTA = ['Grabada', 'En edición', 'Editada', 'Para programar', 'Programada', 'Publicada'];
+const ETAPAS_NOTA = ['Grabada', 'Edición horizontal', 'Edición vertical', 'Para programar', 'Programada', 'Publicada'];
 const ETAPAS_PROG = ['Planificado', 'Grabado', 'En edición', 'Entregado al canal', 'Salió'];
 const SALIO_VISIBLES = 6;
 const ETAPAS_EMP = [
@@ -256,12 +256,12 @@ $('#f-programa').addEventListener('submit', async (ev) => {
 function etapaNota(n) {
   if (n.link_ig || n.link_yt_short) return 5;
   if (n.aprobado && n.publicar_el) return 4;
-  if (n.copy_ig || n.yt_titulo) return 3;
-  if (n.link_completa || n.link_vertical) return 2;
-  if (n.editor) return 1;
+  if (n.link_completa && n.link_vertical) return 3;
+  if (n.link_completa) return 2;
+  if (n.editor || n.link_vertical) return 1;
   return 0;
 }
-const HINTS_NOTA = ['Falta asignar quién edita', 'Falta el link del video editado', 'Faltan los textos', 'El coordinador aprueba y pone fecha', 'Lista para salir en la fecha', ''];
+const HINTS_NOTA = ['Falta asignar quién edita la horizontal', 'Falta el link de la nota completa', 'Falta el recorte vertical', 'El coordinador completa textos, aprueba y pone fecha', 'Lista para salir en la fecha', ''];
 const HORA_PUBLICAR = '18:00';
 const programa = (id) => S.programas.find(p => p.id === id);
 const nombrePrograma = (p) => p ? `ADM #${p.numero ?? '?'}${p.fecha ? ' · ' + fechaCorta(p.fecha) : ''}${p.invitado ? ' · ' + p.invitado : ''}` : '';
@@ -270,15 +270,15 @@ const horaPub = (n) => n.publicar_el ? new Date(n.publicar_el).toTimeString().sl
 function fechaHora(dia, hora) { if (!dia) return null; const [y, m, d] = dia.split('-').map(Number), [hh, mm] = (hora || HORA_PUBLICAR).split(':').map(Number); return new Date(y, m - 1, d, hh, mm).toISOString(); }
 const entrevistadosCorto = (n) => (n.entrevistados || '').split('\n').map(s => s.trim()).filter(Boolean).join(' · ');
 
-function notasFiltradas() { return S.resp ? S.notas.filter(n => n.grabo === S.resp || n.editor === S.resp) : S.notas; }
+function notasFiltradas() { return S.resp ? S.notas.filter(n => [n.grabo, n.editor, n.editor_vertical].includes(S.resp)) : S.notas; }
 
 function tarjetaNota(n) {
   const e = etapaNota(n), p = programa(n.programa_id);
-  const prog = p ? `<span class="chip line">ADM #${esc(p.numero ?? '?')}</span>` : (e >= 2 ? '<span class="chip warn">sin programa</span>' : '');
+  const prog = p ? `<span class="chip line">ADM #${esc(p.numero ?? '?')}</span>` : (e >= 3 ? '<span class="chip warn">sin programa</span>' : '');
   const pub = n.publicar_el ? `<span class="chip line">redes ${esc(fechaCorta(diaPub(n)))} ${esc(horaPub(n))}</span>` : '';
   const links = `<span class="pubs"><span class="pub ${n.link_crudo ? 'on' : ''}">Crudo</span><span class="pub ${n.link_completa ? 'on' : ''}">Completa</span><span class="pub ${n.link_vertical ? 'on' : ''}">Vertical</span></span>`;
-  const quien = [n.grabo && `<span class="chip">🎥 ${esc(n.grabo)}</span>`, n.editor && `<span class="chip">✂️ ${esc(n.editor)}</span>`].filter(Boolean).join('');
-  const faltan = [e >= 2 && !n.link_vertical && 'falta vertical', e >= 2 && !n.link_completa && 'falta nota completa'].filter(Boolean).map(x => `<span class="chip alert">${x}</span>`).join('');
+  const quien = [n.grabo && `<span class="chip" title="Grabó">🎥 ${esc(n.grabo)}</span>`, n.editor && `<span class="chip" title="Edita la horizontal">✂️ H · ${esc(n.editor)}</span>`, n.editor_vertical && `<span class="chip" title="Edita el vertical">✂️ V · ${esc(n.editor_vertical)}</span>`].filter(Boolean).join('');
+  const faltan = e === 3 && !(n.copy_ig && n.yt_titulo) ? '<span class="chip alert">faltan textos</span>' : '';
   return `<div class="card" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}">
     <span class="tt"><span>${esc(n.titulo)}</span></span>
     ${n.entrevistados ? `<span class="meta">${esc(entrevistadosCorto(n))}</span>` : ''}
@@ -289,7 +289,7 @@ function tarjetaNota(n) {
 }
 
 function barraNotas(izq = '') {
-  const opcResp = ['', ...new Set([...responsables(), ...S.notas.flatMap(n => [n.grabo, n.editor]).filter(Boolean)])];
+  const opcResp = ['', ...new Set([...responsables(), ...S.notas.flatMap(n => [n.grabo, n.editor, n.editor_vertical]).filter(Boolean)])];
   return `<div class="barra">${izq || '<span></span>'}
       <div class="herr">
         <select id="f-resp" aria-label="Quién graba o edita">${opcResp.map(r => `<option value="${esc(r)}" ${r === S.resp ? 'selected' : ''}>${r ? esc(r) : 'Todo el equipo'}</option>`).join('')}</select>
@@ -307,8 +307,8 @@ function renderInformes() {
   const ns = S.notas, cuenta = (i) => ns.filter(n => etapaNota(n) === i).length;
   const stats = [
     [cuenta(0), 'grabadas sin editor', cuenta(0) > 0],
-    [cuenta(1), 'en edición'],
-    [cuenta(2) + cuenta(3), 'esperan al coordinador', cuenta(3) > 0],
+    [cuenta(1) + cuenta(2), 'en edición (horizontal o vertical)'],
+    [cuenta(3), 'esperan al coordinador', cuenta(3) > 0],
     [cuenta(4), 'programadas para redes'],
     [cuenta(5), 'publicadas'],
   ];
@@ -397,7 +397,7 @@ document.addEventListener('drop', (ev) => {
 function abrirNota(id) {
   const n = id ? S.notas.find(x => x.id === id) : null;
   const e = n ? etapaNota(n) : 0;
-  const abierta = !n ? 1 : e <= 1 ? 2 : e <= 4 ? 3 : 4;
+  const abierta = !n ? 1 : e <= 1 ? 2 : e === 2 ? 3 : e <= 4 ? 4 : 5;
   const gente = (actual) => [...new Set([...responsables(), actual].filter(Boolean))];
   const sel = (id, actual) => `<select id="${id}"><option value="">—</option>${gente(actual).map(r => `<option ${r === actual ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>`;
   const progs = [...S.programas].sort((a, b) => (b.numero || 0) - (a.numero || 0));
@@ -411,11 +411,13 @@ function abrirNota(id) {
       <label class="f"><span>Entrevistados (nombre y @ de IG, uno por línea)</span><textarea id="n-entrevistados" placeholder="Paula Rodríguez @paulirodriguez.psi">${esc(n?.entrevistados)}</textarea></label>
       <label class="f"><span>Link del crudo (Google Drive)</span><input id="n-crudo" type="url" value="${esc(n?.link_crudo)}" placeholder="https://drive.google.com/…"></label>
       <label class="f"><span>Quién grabó</span>${sel('n-grabo', n ? n.grabo : S.yo.nombre)}</label>`)}
-    ${seccion(2, 'Edición', 'editor', `
+    ${seccion(2, 'Edición horizontal', 'nota completa: TV y YouTube', `
       <label class="f"><span>Quién edita</span>${sel('n-editor', n?.editor)}</label>
-      <label class="f"><span>Link nota completa (horizontal: TV y YouTube)</span><input id="n-completa" type="url" value="${esc(n?.link_completa)}" placeholder="https://drive.google.com/…"></label>
-      <label class="f"><span>Link recorte vertical (Reel y Short) · exportar en 1080×1920, menos de 300 MB</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
-    ${seccion(3, 'Coordinación', 'coordinador', `
+      <label class="f"><span>Link nota completa</span><input id="n-completa" type="url" value="${esc(n?.link_completa)}" placeholder="https://drive.google.com/…"></label>`)}
+    ${seccion(3, 'Edición vertical', 'recorte: Reel y Short', `
+      <label class="f"><span>Quién edita</span>${sel('n-editor-v', n?.editor_vertical)}</label>
+      <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
+    ${seccion(4, 'Coordinación', 'coordinador', `
       <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
       <label class="f"><span>Título de YouTube</span><input id="n-yt-titulo" maxlength="100" value="${esc(n?.yt_titulo)}"></label>
@@ -425,7 +427,7 @@ function abrirNota(id) {
         <label class="f"><span>Hora</span><input id="n-hora" type="time" value="${esc(n ? horaPub(n) : HORA_PUBLICAR)}"></label>
       </div>
       <div class="checks"><label><input type="checkbox" id="n-aprobado" ${n?.aprobado ? 'checked' : ''}> Textos y fecha aprobados: se puede publicar</label></div>`)}
-    ${seccion(4, 'Publicación', 'se completa sola al publicar', `
+    ${seccion(5, 'Publicación', 'se completa sola al publicar', `
       <label class="f"><span>Reel en IG</span><input id="n-link-ig" type="url" value="${esc(n?.link_ig)}"></label>
       <label class="f"><span>Short en YouTube</span><input id="n-link-short" type="url" value="${esc(n?.link_yt_short)}"></label>
       <label class="f"><span>Nota completa en YouTube</span><input id="n-link-ytc" type="url" value="${esc(n?.link_yt_completa)}"></label>`)}
@@ -454,7 +456,7 @@ $('#f-nota').addEventListener('submit', async (ev) => {
   const f = $('#f-nota'), val = (id) => $(id).value.trim();
   const body = {
     titulo: val('#n-titulo'), entrevistados: val('#n-entrevistados'), link_crudo: val('#n-crudo'), grabo: $('#n-grabo').value,
-    editor: $('#n-editor').value, link_completa: val('#n-completa'), link_vertical: val('#n-vertical'),
+    editor: $('#n-editor').value, link_completa: val('#n-completa'), editor_vertical: $('#n-editor-v').value, link_vertical: val('#n-vertical'),
     programa_id: $('#n-programa').value || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value), aprobado: $('#n-aprobado').checked,
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
