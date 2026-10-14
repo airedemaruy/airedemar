@@ -17,7 +17,9 @@ jobs:
         run: |
           URL=$(grep -oP "SUPABASE_URL\s*=\s*'\K[^']+" equipo/app.js)
           KEY=$(grep -oP "SUPABASE_ANON\s*=\s*'\K[^']+" equipo/app.js)
-          code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/equipo?select=*&limit=1" \
+          code=$(curl -s -o r.json -w "%{http_code}" "$URL/rest/v1/equipo?select=*&limit=1" \
             -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
-          echo "Respuesta de Supabase: $code"
-          test "$code" -lt 300
+          echo "Respuesta de Supabase: $code $(head -c 120 r.json)"
+          # La clave pública no tiene permiso sobre "equipo" (RLS): el 42501 lo responde Postgres,
+          # así que la consulta llegó a la base igual. Falla solo si la base no contesta (pausada o caída).
+          [ "$code" -lt 300 ] || grep -q '"42501"' r.json
