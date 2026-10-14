@@ -40,3 +40,14 @@ jobs:
           PUB_SECRETO: ${{ secrets.PUB_SECRETO }}
           GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
           GH_TOKEN: ${{ github.token }}
+      # Red de seguridad: borra el adjunto temporal de esta corrida si quedó (corte a mitad de camino)
+      # y los de corridas viejas que hayan quedado colgados hace más de 2 horas. Nunca los de otra corrida en curso.
+      - name: Limpiar adjuntos temporales
+        if: always()
+        run: |
+          limite=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh release list --repo "$GITHUB_REPOSITORY" --json tagName,createdAt \
+            -q ".[] | select(.tagName | startswith(\"tmp-pub-\")) | select((.tagName | endswith(\"-${GITHUB_RUN_ID}\")) or .createdAt < \"$limite\") | .tagName" |
+          while read -r t; do gh release delete "$t" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; done
+        env:
+          GH_TOKEN: ${{ github.token }}

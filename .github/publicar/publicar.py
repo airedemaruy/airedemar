@@ -122,8 +122,25 @@ def main():
     try:
         url = f"https://github.com/{REPO}/releases/download/{tag}/vertical.mp4"
         uid = ig("GET", "me", ig_token, params={"fields": "user_id"})["user_id"]
-        cont = ig("POST", f"{uid}/media", ig_token, data={"media_type": "REELS", "video_url": url,
-                                                      "caption": nota["copy_ig"], "share_to_feed": "true"})["id"]
+        datos_reel = {"media_type": "REELS", "video_url": url, "caption": nota["copy_ig"], "share_to_feed": "true"}
+        collabs = [u.lstrip("@") for u in re.split(r"[,\s]+", nota.get("colaboradores") or "") if u.strip("@")][:3]
+        sin_invitar = []
+        try:
+            cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(collabs)} if collabs else {})})["id"]
+        except RuntimeError as e:
+            if not collabs or "not visible" not in str(e).lower():
+                raise
+            # Algún collab es privado o no existe: se publica con los que sí se pueden invitar
+            validos = []
+            for u in collabs:
+                try:
+                    ig("POST", f"{uid}/media", ig_token, data={**datos_reel, "collaborators": json.dumps([u])})
+                    validos.append(u)
+                except RuntimeError:
+                    sin_invitar.append(u)
+            cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(validos)} if validos else {})})["id"]
+            log(f"{len(sin_invitar)} collab(s) no se pudieron invitar (cuenta privada o usuario inexistente)")
+        aviso_collabs = f" No se pudo invitar como collab a: {', '.join('@' + u for u in sin_invitar)} (cuenta privada o usuario mal escrito)." if sin_invitar else ""
         for _ in range(90):
             st = ig("GET", cont, ig_token, params={"fields": "status_code,status"})
             if st["status_code"] in ("FINISHED", "ERROR", "EXPIRED"):
@@ -134,7 +151,7 @@ def main():
         log("Instagram procesó el video")
         if ENSAYO:
             log("Ensayo: no se publica en Instagram")
-            avisar(pub_detalle=f"Ensayo OK {datetime.now(timezone.utc):%d/%m %H:%M} UTC: Drive, YouTube e Instagram respondieron bien. No se publicó nada.")
+            avisar(pub_detalle=f"Ensayo OK {datetime.now(timezone.utc):%d/%m %H:%M} UTC: Drive, YouTube e Instagram respondieron bien. No se publicó nada.{aviso_collabs}")
             return
         espera = (CUANDO - datetime.now(timezone.utc)).total_seconds()
         if espera > 0:
@@ -142,7 +159,7 @@ def main():
             time.sleep(espera)
         media = ig("POST", f"{uid}/media_publish", ig_token, data={"creation_id": cont})["id"]
         link = ig("GET", media, ig_token, params={"fields": "permalink"}).get("permalink", "")
-        avisar(link_ig=link, pub_estado="publicada", pub_detalle=f"Publicada el {datetime.now(timezone.utc):%d/%m %H:%M} UTC")
+        avisar(link_ig=link, pub_estado="publicada", pub_detalle=f"Publicada el {datetime.now(timezone.utc):%d/%m %H:%M} UTC.{aviso_collabs}")
         log("Instagram OK: publicado")
     finally:
         subprocess.run(["gh", "release", "delete", tag, "--repo", REPO, "--yes", "--cleanup-tag"], capture_output=True)

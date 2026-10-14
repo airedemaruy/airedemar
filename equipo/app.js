@@ -444,6 +444,7 @@ function abrirNota(id) {
     ${seccion(4, 'Coordinación', 'coordinador', `
       <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
+      <label class="f"><span>Collabs de IG (hasta 3 usuarios, sin @; tienen que ser cuentas públicas y aceptar la invitación)</span><input id="n-collabs" value="${esc(n?.colaboradores)}" placeholder="afavordelmar_, ipereyrarivero" autocapitalize="none" spellcheck="false"></label>
       <div><button type="button" class="btn quiet small" id="n-desde-copy">Completar YouTube desde el copy</button></div>
       <label class="f"><span>Título de YouTube</span><input id="n-yt-titulo" maxlength="100" value="${esc(n?.yt_titulo)}"></label>
       <label class="f"><span>Descripción de YouTube</span><textarea id="n-yt-desc" rows="5">${esc(n?.yt_descripcion)}</textarea></label>
@@ -510,6 +511,7 @@ function leerFormNota() {
     titulo: val('#n-titulo'), entrevistados: val('#n-entrevistados'), link_crudo: val('#n-crudo'), grabo: $('#n-grabo').value,
     editor: $('#n-editor').value, link_completa: val('#n-completa'), editor_vertical: $('#n-editor-v').value, link_vertical: val('#n-vertical'),
     programa_id: $('#n-programa').value || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
+    colaboradores: val('#n-collabs').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
   };
@@ -517,6 +519,7 @@ function leerFormNota() {
 function errorNota(body) {
   if (!body.titulo) return 'Poné un rótulo.';
   if (body.copy_ig.length > 2200) return 'El copy de IG pasa los 2200 caracteres.';
+  if (body.colaboradores.split(', ').filter(Boolean).length > 3) return 'Instagram permite hasta 3 collabs.';
   return '';
 }
 async function guardarNota(body, ok) {
