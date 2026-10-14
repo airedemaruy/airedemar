@@ -32,9 +32,21 @@ const GMAIL_BORRADORES = 'https://mail.google.com/mail/u/?authuser=airedemar.uy@
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const TABLAS = ['programas', 'notas', 'empresas', 'contactos', 'envios', 'plantillas', 'paquetes', 'config', 'metricas', 'equipo'];
 
+/* Cada pestaña tiene su URL (#programas, #informes…): se puede guardar o compartir, y "atrás" vuelve a la anterior. */
+const PESTANAS = ['programas', 'informes', 'calendario', 'sponsors', 'metricas', 'equipo'];
+const pestanaDeUrl = () => { const h = location.hash.slice(1); return PESTANAS.includes(h) ? h : 'programas'; };
+function irA(tab) {
+  S.tab = tab;
+  if (location.hash.slice(1) !== tab) history.pushState(null, '', '#' + tab);
+  render();
+}
+function seguirUrl() { if (S.tab !== pestanaDeUrl()) { S.tab = pestanaDeUrl(); render(); } }
+window.addEventListener('popstate', seguirUrl);
+window.addEventListener('hashchange', seguirUrl);
+
 function vistaGuardada() { try { return localStorage.getItem('calVista') === 'lista' ? 'lista' : 'clasico'; } catch (_) { return 'clasico'; } }
 const S = {
-  yo: null, tab: 'programas', progTodos: false, colTodas: new Set(), calVista: vistaGuardada(), calMes: new Date(), subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
+  yo: null, tab: pestanaDeUrl(), progTodos: false, colTodas: new Set(), calVista: vistaGuardada(), calMes: new Date(), subSp: 'embudo', resp: '', etapa: null, q: '', rubro: '', tipo: '',
   abierta: null, borrador: null, cargado: false, conCuenta: null, claves: {}, nivel: '', acuerdo: '',
   programas: [], notas: [], empresas: [], contactos: [], envios: [], plantillas: [], paquetes: [], config: [], metricas: [], equipo: [],
 };
@@ -154,6 +166,7 @@ function suscribir() {
 /* ---------- render general ---------- */
 function render() {
   if (!S.yo) return;
+  if (S.tab === 'equipo' && !esAdmin()) { S.tab = 'programas'; history.replaceState(null, '', '#programas'); }
   document.querySelectorAll('.nav button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
   const pend = S.envios.filter(e => e.estado === 'borrador').length;
   $('#t-sponsors').innerHTML = 'Sponsors' + (pend ? `<span class="badge">${pend}</span>` : '');
@@ -678,7 +691,7 @@ async function guardarEmpresa() {
 async function nuevaEmpresa() {
   const { data, error } = await sb.from('empresas').insert({ nombre: 'Empresa nueva', proximo_paso: 'Conseguir contacto' }).select().single();
   if (error) { toast('No se pudo crear: ' + error.message); return; }
-  await cargar('empresas'); S.tab = 'sponsors'; render(); abrirFicha(data.id);
+  await cargar('empresas'); irA('sponsors'); abrirFicha(data.id);
   setTimeout(() => { const n = $('#d-nombre'); if (n) { n.focus(); n.select(); } }, 60);
 }
 
@@ -776,7 +789,7 @@ function renderEquipo() {
 document.addEventListener('click', async (ev) => {
   const t = ev.target.closest('button, tr[data-empresa], [data-nota], [data-prog]');
   if (!t || t.closest('#f-nota') || t.closest('#f-programa') || t.closest('#f-login') || t.closest('#f-cuenta')) return;
-  if (t.dataset.tab) { S.tab = t.dataset.tab; render(); return; }
+  if (t.dataset.tab) { irA(t.dataset.tab); return; }
   if (t.dataset.subsp) { S.subSp = t.dataset.subsp; render(); return; }
   if (t.dataset.nota) { abrirNota(t.dataset.nota); return; }
   if (t.dataset.prog) { abrirPrograma(t.dataset.prog); return; }
