@@ -104,17 +104,18 @@ def main():
         estado["publishAt"] = publicar_yt.strftime("%Y-%m-%dT%H:%M:%SZ")
     cuerpo = {"snippet": {"title": nota["yt_titulo"][:100], "description": nota["yt_descripcion"] or nota["copy_ig"],
                           "categoryId": "17", "defaultLanguage": "es"}, "status": estado}
-    subida = yt.videos().insert(part="snippet,status", body=cuerpo,
-                                media_body=MediaFileUpload(VIDEO, mimetype="video/mp4", resumable=True, chunksize=16 * 2**20))
-    resp = None
-    while resp is None:
-        _, resp = subida.next_chunk()
-    vid = resp["id"]
     if ENSAYO:
-        yt.videos().delete(id=vid).execute()
-        log("YouTube OK (ensayo: se subió privado y se borró)")
+        # El ensayo no sube: cada subida gasta 1600 de las 10.000 unidades diarias de la API, aunque después se borre
+        yt.channels().list(part="id", mine=True).execute()
+        log("YouTube OK (ensayo: acceso verificado, no se subió nada)")
         avisar(pub_progreso=50, pub_detalle="YouTube respondió bien. Subiendo a Instagram…")
     else:
+        subida = yt.videos().insert(part="snippet,status", body=cuerpo,
+                                    media_body=MediaFileUpload(VIDEO, mimetype="video/mp4", resumable=True, chunksize=16 * 2**20))
+        resp = None
+        while resp is None:
+            _, resp = subida.next_chunk()
+        vid = resp["id"]
         avisar(link_yt_short=f"https://youtu.be/{vid}", pub_progreso=50,
                pub_detalle=f"YouTube listo (sale a las {publicar_yt.astimezone(UY):%H:%M}). Subiendo a Instagram…")
         log(f"YouTube OK: programado para {publicar_yt.isoformat()}")
