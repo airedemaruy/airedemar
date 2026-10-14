@@ -176,13 +176,15 @@ def main():
             tok = r.get("nextPageToken")
             if not tok:
                 return items
+    # La lista se lee una sola vez y se lleva el orden acá: YouTube tarda en reflejar cada inserción
+    en_lista = [(i["contentDetails"]["videoId"], orden(i["snippet"]["title"])) for i in items_lista()]
     for vid, titulo, _ in sorted(videos, key=lambda v: orden(v[1]) or (0, 0)):
-        actuales = items_lista()
-        if vid in {i["contentDetails"]["videoId"] for i in actuales}:
+        if vid in {v for v, _ in en_lista}:
             continue
-        pos = sum(1 for a in actuales if orden(a["snippet"]["title"]) and orden(a["snippet"]["title"]) < orden(titulo))
+        pos = sum(1 for _, o in en_lista if o and o < orden(titulo))
         yt.playlistItems().insert(part="snippet", body={"snippet": {"playlistId": LISTA, "position": pos,
                                   "resourceId": {"kind": "youtube#video", "videoId": vid}}}).execute()
+        en_lista.insert(pos, (vid, orden(titulo)))
     log("Lista de la temporada actualizada")
 
     hora = f"{publicar.astimezone(UY):%H:%M} del {publicar.astimezone(UY):%d/%m}"
