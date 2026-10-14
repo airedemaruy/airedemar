@@ -153,7 +153,8 @@ def main():
     publicar = max(CUANDO, datetime.now(timezone.utc) + timedelta(minutes=3))
     videos = [(ids[1], p["titulo_b1"], p["desc_b1"]), (ids[2], p["titulo_b2"], p["desc_b2"]),
               (ids[3], p["titulo_b3"], p["desc_b3"]), (id_comp, p["titulo_completo"], p["desc_completo"])]
-    for vid, titulo, desc in videos:
+    # Salen escalonados, un minuto cada uno, en orden B1, B2, B3 y completo: así aparecen en orden en el canal
+    for k, (vid, titulo, desc) in enumerate(videos):
         if not titulo:
             raise RuntimeError("Faltan títulos en la tarjeta del programa")
         actual = yt.videos().list(part="status", id=vid).execute()["items"][0]["status"]
@@ -161,7 +162,7 @@ def main():
                                          "defaultLanguage": "es", "defaultAudioLanguage": "es"}}
         partes = "snippet"
         if actual["privacyStatus"] != "public":
-            cuerpo["status"] = {"privacyStatus": "private", "publishAt": publicar.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            cuerpo["status"] = {"privacyStatus": "private", "publishAt": (publicar + timedelta(minutes=k)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                 "selfDeclaredMadeForKids": False, "embeddable": True}
             partes = "snippet,status"
         yt.videos().update(part=partes, body=cuerpo).execute()
