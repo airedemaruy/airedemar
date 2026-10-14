@@ -287,7 +287,10 @@ const nombrePrograma = (p) => p ? `ADM #${p.numero ?? '?'}${p.fecha ? ' · ' + f
 const diaPub = (n) => n.publicar_el ? iso(new Date(n.publicar_el)) : '';
 const horaPub = (n) => n.publicar_el ? new Date(n.publicar_el).toTimeString().slice(0, 5) : HORA_PUBLICAR;
 function fechaHora(dia, hora) { if (!dia) return null; const [y, m, d] = dia.split('-').map(Number), [hh, mm] = (hora || HORA_PUBLICAR).split(':').map(Number); return new Date(y, m - 1, d, hh, mm).toISOString(); }
-const entrevistadosCorto = (n) => (n.entrevistados || '').split('\n').map(s => s.trim()).filter(Boolean).join(' · ');
+/* El "video relacionado" del Short no se puede asignar ni leer por la API de YouTube: queda registrado a mano. */
+const idYoutube = (url) => ((url || '').match(/(?:youtu\.be\/|[?&]v=|\/shorts\/)([\w-]{11})/) || [])[1] || '';
+const faltaRelacionado = (n) => !!(n.link_yt_short && n.link_yt_completa && !n.yt_relacionado);
+const entrevistadosCorto =(n) => (n.entrevistados || '').split('\n').map(s => s.trim()).filter(Boolean).join(' · ');
 
 function notasFiltradas() { return S.resp ? S.notas.filter(n => [n.grabo, n.editor, n.editor_vertical].includes(S.resp)) : S.notas; }
 
@@ -298,7 +301,8 @@ function tarjetaNota(n) {
   const links = `<span class="pubs"><span class="pub ${n.link_crudo ? 'on' : ''}">Crudo</span><span class="pub ${n.link_completa ? 'on' : ''}">Completa</span><span class="pub ${n.link_vertical ? 'on' : ''}">Vertical</span></span>`;
   const quien = [n.grabo && `<span class="chip" title="Grabó">🎥 ${esc(n.grabo)}</span>`, n.editor && `<span class="chip" title="Edita la horizontal">✂️ H · ${esc(n.editor)}</span>`, n.editor_vertical && `<span class="chip" title="Edita el vertical">✂️ V · ${esc(n.editor_vertical)}</span>`].filter(Boolean).join('');
   const faltan = (e === 3 && !(n.copy_ig && n.yt_titulo) ? '<span class="chip alert">faltan textos</span>' : '') +
-    ({ programada: '<span class="chip ok">⏱ programada</span>', publicando: '<span class="chip warn">⏳ publicando</span>', error: '<span class="chip alert">⚠️ error al publicar</span>' }[n.pub_estado] || '');
+    ({ programada: '<span class="chip ok">⏱ programada</span>', publicando: '<span class="chip warn">⏳ publicando</span>', error: '<span class="chip alert">⚠️ error al publicar</span>' }[n.pub_estado] || '') +
+    (faltaRelacionado(n) ? '<span class="chip alert" title="Asignar la nota completa como video relacionado del Short en YouTube Studio">falta video relacionado</span>' : '');
   return `<div class="card" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}">
     <span class="tt"><span>${esc(n.titulo)}</span></span>
     ${n.entrevistados ? `<span class="meta">${esc(entrevistadosCorto(n))}</span>` : ''}
@@ -331,6 +335,7 @@ function renderInformes() {
     [cuenta(3), 'esperan al coordinador', cuenta(3) > 0],
     [cuenta(4), 'programadas para redes'],
     [cuenta(5), 'publicadas'],
+    [ns.filter(faltaRelacionado).length, 'Shorts sin video relacionado', ns.some(faltaRelacionado)],
   ];
   const lista = notasFiltradas();
   v.innerHTML = `
@@ -456,7 +461,9 @@ function abrirNota(id) {
     ${seccion(5, 'Publicación', 'se completa sola al publicar', `
       <label class="f"><span>Reel en IG</span><input id="n-link-ig" type="url" value="${esc(n?.link_ig)}"></label>
       <label class="f"><span>Short en YouTube</span><input id="n-link-short" type="url" value="${esc(n?.link_yt_short)}"></label>
-      <label class="f"><span>Nota completa en YouTube</span><input id="n-link-ytc" type="url" value="${esc(n?.link_yt_completa)}"></label>`)}
+      <label class="f"><span>Nota completa en YouTube</span><input id="n-link-ytc" type="url" value="${esc(n?.link_yt_completa)}"></label>
+      <div class="checks"><label><input type="checkbox" id="n-relacionado" ${n?.yt_relacionado ? 'checked' : ''}> El Short tiene la nota completa como "video relacionado" (se asigna a mano en YouTube Studio)</label></div>
+      ${idYoutube(n?.link_yt_short) ? `<a class="nota" href="https://studio.youtube.com/video/${esc(idYoutube(n.link_yt_short))}/edit" target="_blank" rel="noopener">Abrir el Short en YouTube Studio ↗</a>` : ''}`)}
     <label class="f"><span>Pendientes (uno por línea)</span><textarea id="n-pendientes">${esc(n?.pendientes)}</textarea></label>
     <div class="acciones" style="justify-content:space-between">
       <span id="n-borrar-zona">${n ? '<button type="button" class="btn danger" id="n-borrar">Borrar</button>' : ''}</span>
@@ -514,6 +521,7 @@ function leerFormNota() {
     colaboradores: val('#n-collabs').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
+    yt_relacionado: $('#n-relacionado').checked,
   };
 }
 function errorNota(body) {
