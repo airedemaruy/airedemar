@@ -281,7 +281,7 @@ function abrirPrograma(id) {
     ${seccion(2, 'Bloques finales', 'se completan solos el sábado 14:00 desde CANAL ONCE', BLOQUES.map(b => `
       <label class="f"><span>Bloque ${b}</span><input id="p-link-b${b}" type="url" value="${esc(p?.[`link_b${b}`])}" placeholder="https://drive.google.com/…"></label>`).join(''))}
     ${seccion(3, 'YouTube', 'títulos y descripciones antes del domingo 18:30', `
-      <div class="nota">El sábado 14:00 se suben solos el completo y los 3 bloques, programados para el domingo 19:00 (primero el completo y después B1, B2 y B3), y le llega un mail a Floppy. El domingo 18:30 se aplica lo que esté cargado acá. Si un título queda vacío, sale uno provisorio.</div>
+      <div class="nota">El sábado 14:00 se suben solos el completo y los 3 bloques y le llega un mail a Floppy. Salen a las 19:00: <b>completo el domingo, B1 el lunes, B2 el miércoles y B3 el viernes</b> (los recaps de cada bloque, martes, jueves y sábado, desde Informes). El domingo 18:30 se aplica lo que esté cargado acá. Si un título queda vacío, sale uno provisorio.</div>
       ${texto('completo', 'Programa completo · título', `Aire de Mar 2026 #${n} - Programa completo | ${inv}`)}
       ${texto('b1', 'Bloque 1 · título', `Aire de Mar 2026 #${n} B1 - ${inv} - tema de la nota`)}
       ${texto('b2', 'Bloque 2 · título', `Aire de Mar 2026 #${n} B2 - ${inv} (Entrevista)`)}
@@ -352,7 +352,12 @@ function etapaNota(n) {
 const EDITOR_HORIZONTAL = 'Agencia Boomer';
 const EDITOR_VERTICAL = 'Juandi';
 const HINTS_NOTA = ['Falta el link del crudo', `${EDITOR_HORIZONTAL} arma la nota completa`, `${EDITOR_VERTICAL} hace el recorte vertical`, 'El coordinador completa textos, aprueba y pone fecha', 'Lista para salir en la fecha', ''];
-const HORA_PUBLICAR = '18:00';
+const HORA_PUBLICAR = '19:00';
+/* Semana de un programa (días después del domingo de emisión): en YouTube el completo, B1, B2, B3;
+   el recap de cada bloque (Reel + Short) sale al día siguiente de su bloque. */
+const DIA_YT = { completo: 0, 1: 1, 2: 3, 3: 5 };
+const DIA_RECAP = { 1: 2, 2: 4, 3: 6 };
+function diaMas(fecha, dias) { const d = parse(fecha); d.setDate(d.getDate() + dias); return iso(d); }
 const programa = (id) => S.programas.find(p => p.id === id);
 const nombrePrograma = (p) => p ? `ADM #${p.numero ?? '?'}${p.fecha ? ' · ' + fechaCorta(p.fecha) : ''}${p.invitado ? ' · ' + p.invitado : ''}` : '';
 const diaPub = (n) => n.publicar_el ? iso(new Date(n.publicar_el)) : '';
@@ -367,7 +372,7 @@ function notasFiltradas() { return S.resp ? S.notas.filter(n => [n.grabo, n.edit
 
 function tarjetaNota(n) {
   const e = etapaNota(n), p = programa(n.programa_id);
-  const prog = p ? `<span class="chip line">ADM #${esc(p.numero ?? '?')}</span>` : (e >= 3 ? '<span class="chip warn">sin programa</span>' : '');
+  const prog = p ? `<span class="chip line">ADM #${esc(p.numero ?? '?')}${n.bloque ? ' · B' + esc(n.bloque) : ''}</span>` : (e >= 3 ? '<span class="chip warn">sin programa</span>' : '');
   const pub = n.publicar_el ? `<span class="chip line">redes ${esc(fechaCorta(diaPub(n)))} ${esc(horaPub(n))}</span>` : '';
   const links = `<span class="pubs"><span class="pub ${n.link_crudo ? 'on' : ''}">Crudo</span><span class="pub ${n.link_completa ? 'on' : ''}">Completa</span><span class="pub ${n.link_vertical ? 'on' : ''}">Vertical</span></span>`;
   const quien = [n.grabo && `<span class="chip" title="Grabó">🎥 ${esc(n.grabo)}</span>`, n.editor && `<span class="chip" title="Edita la horizontal">✂️ H · ${esc(n.editor)}</span>`, n.editor_vertical && `<span class="chip" title="Edita el vertical">✂️ V · ${esc(n.editor_vertical)}</span>`].filter(Boolean).join('');
@@ -434,6 +439,8 @@ function renderCalendario() {
     (clasico ? `<div class="mes-nav"><button class="btn quiet small" data-calmes="-1" aria-label="Mes anterior">‹</button><b class="mes-nombre">${esc(nombreMes)}</b><button class="btn quiet small" data-calmes="1" aria-label="Mes siguiente">›</button><button class="btn quiet small" data-calmes="hoy">Hoy</button></div>` : '') + '</div>';
   const sin = lista.filter(n => !n.publicar_el && etapaNota(n) < 5);
   const progDel = (s) => S.programas.find(p => p.fecha === s);
+  const ytDel = (s) => S.programas.flatMap(p => p.fecha ? Object.entries(DIA_YT).filter(([, d]) => diaMas(p.fecha, d) === s)
+    .map(([c]) => `YT · #${p.numero} ${c === 'completo' ? 'completo' : 'B' + c}`) : []);
   let cuerpo;
   if (clasico) {
     const offset = (mes.getDay() + 6) % 7, total = Math.ceil((offset + new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate()) / 7) * 7;
@@ -442,7 +449,7 @@ function renderCalendario() {
     const celdas = Array.from({ length: total }, (_, i) => {
       const d = new Date(mes.getFullYear(), mes.getMonth(), 1 - offset + i), s = iso(d), p = progDel(s);
       const items = lista.filter(n => diaPub(n) === s).sort((a, b) => a.publicar_el.localeCompare(b.publicar_el));
-      return `<div class="dia ${d.getMonth() !== mes.getMonth() ? 'fuera' : ''} ${s === hoy ? 'hoy' : ''} ${d.getDay() === 0 ? 'domingo' : ''}" data-soltar-fecha="${s}"><span class="num">${d.getDate()}</span>${p ? `<span class="tv-dia" title="${esc(nombrePrograma(p))}">TV · ADM #${esc(p.numero ?? '?')}</span>` : ''}${items.map(chipNota).join('')}</div>`;
+      return `<div class="dia ${d.getMonth() !== mes.getMonth() ? 'fuera' : ''} ${s === hoy ? 'hoy' : ''} ${d.getDay() === 0 ? 'domingo' : ''}" data-soltar-fecha="${s}"><span class="num">${d.getDate()}</span>${p ? `<span class="tv-dia" title="${esc(nombrePrograma(p))}">TV · ADM #${esc(p.numero ?? '?')}</span>` : ''}${ytDel(s).map(t => `<span class="tv-dia yt-dia">${esc(t)}</span>`).join('')}${items.map(chipNota).join('')}</div>`;
     }).join('');
     cuerpo = `<div class="grilla-wrap"><div class="grilla">${dias}${celdas}</div></div>
       <div class="sinfecha" data-soltar-fecha=""><h4>Sin fecha para redes <span>${sin.length}</span></h4><div class="items">${sin.length ? sin.map(chipNota).join('') : '<div class="nota">Todas tienen fecha.</div>'}</div></div>`;
@@ -518,7 +525,10 @@ function abrirNota(id) {
       <label class="f"><span>Quién edita</span>${sel('n-editor-v', n ? n.editor_vertical : EDITOR_VERTICAL)}</label>
       <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
     ${seccion(4, 'Coordinación', 'coordinador', `
-      <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
+      <div class="campos">
+        <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
+        <label class="f"><span>Bloque del programa</span><select id="n-bloque"><option value="">—</option>${[1, 2, 3].map(b => `<option value="${b}" ${n?.bloque === b ? 'selected' : ''}>B${b} · recap el ${['', 'martes', 'jueves', 'sábado'][b]}</option>`).join('')}</select></label>
+      </div>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
       <label class="f"><span>Collabs de IG (hasta 3 usuarios, sin @; tienen que ser cuentas públicas y aceptar la invitación)</span><input id="n-collabs" value="${esc(n?.colaboradores)}" placeholder="afavordelmar_, ipereyrarivero" autocapitalize="none" spellcheck="false"></label>
       <div><button type="button" class="btn quiet small" id="n-desde-copy">Completar YouTube desde el copy</button></div>
@@ -565,6 +575,14 @@ function youtubeDesdeCopy(copy, linkCompleta) {
 
 function contarCopy() { const c = $('#n-copy'), s = $('#n-copy-cuenta'); if (c && s) { s.textContent = `(${c.value.length} de 2200)`; s.style.color = c.value.length > 2200 ? 'var(--bad, #c23b2a)' : ''; } }
 $('#f-nota').addEventListener('input', (ev) => { if (ev.target.id === 'n-copy') contarCopy(); });
+// Al elegir programa y bloque, propone el día del recap (el día siguiente al bloque en YouTube) si todavía no hay fecha
+$('#f-nota').addEventListener('change', (ev) => {
+  if (!['n-programa', 'n-bloque'].includes(ev.target.id)) return;
+  const p = programa($('#n-programa').value), b = Number($('#n-bloque').value);
+  if (!p?.fecha || !b || $('#n-dia').value) return;
+  $('#n-dia').value = diaMas(p.fecha, DIA_RECAP[b]); $('#n-hora').value = HORA_PUBLICAR;
+  toast(`Propuesto: recap el ${fechaCorta($('#n-dia').value)} a las ${HORA_PUBLICAR}, el día después del B${b} en YouTube.`);
+});
 
 $('#f-nota').addEventListener('click', async (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
@@ -588,7 +606,7 @@ function leerFormNota() {
   return {
     titulo: val('#n-titulo'), entrevistados: val('#n-entrevistados'), link_crudo: val('#n-crudo'), grabo: $('#n-grabo').value,
     editor: $('#n-editor').value, link_completa: val('#n-completa'), editor_vertical: $('#n-editor-v').value, link_vertical: val('#n-vertical'),
-    programa_id: $('#n-programa').value || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
+    programa_id: $('#n-programa').value || null, bloque: Number($('#n-bloque').value) || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
     colaboradores: val('#n-collabs').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
