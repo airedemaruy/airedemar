@@ -153,8 +153,11 @@ def main():
     publicar = max(CUANDO, datetime.now(timezone.utc) + timedelta(minutes=3))
     videos = [(ids[1], p["titulo_b1"], p["desc_b1"]), (ids[2], p["titulo_b2"], p["desc_b2"]),
               (ids[3], p["titulo_b3"], p["desc_b3"]), (id_comp, p["titulo_completo"], p["desc_completo"])]
-    # Salen escalonados, un minuto cada uno, en orden B1, B2, B3 y completo: así aparecen en orden en el canal
-    for k, (vid, titulo, desc) in enumerate(videos):
+    # Salen escalonados, un minuto cada uno: primero el programa completo (lo que se estrena) y después B1, B2 y B3,
+    # así cada bloque puede llevar al completo como video relacionado (y después los Shorts, a su bloque)
+    turno = {id_comp: 0, ids[1]: 1, ids[2]: 2, ids[3]: 3}
+    for vid, titulo, desc in videos:
+        k = turno[vid]
         if not titulo:
             raise RuntimeError("Faltan títulos en la tarjeta del programa")
         actual = yt.videos().list(part="status", id=vid).execute()["items"][0]["status"]
