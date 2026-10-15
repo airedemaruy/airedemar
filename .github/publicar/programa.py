@@ -6,8 +6,9 @@ Corre en GitHub Actions (workflow programa.yml). Modos:
 - aplicar: (domingo 18:30, o botón de la app) aplica títulos y descripciones de la tarjeta y suma capítulos
   automáticos (sacados de los subtítulos de YouTube) a las descripciones que no los tengan.
 - ahora: (botón de la app) hace todo y publica ya.
-Orden de publicación: completo, B1, B2, B3 (un minuto entre cada uno), así cada bloque puede tener al
-completo como video relacionado. Los videos quedan privados con publicación programada (la app no está
+Semana (19:00): completo el domingo, B1 el lunes, B2 el miércoles, B3 el viernes; los recaps de cada bloque
+(Reel + Short, desde Informes) salen martes, jueves y sábado. Así cada pieza sale después de la que tiene como
+video relacionado: bloques → completo, Shorts → su bloque. Los videos quedan privados con publicación programada (la app no está
 auditada por Google, así que no se puede pasar a público directo).
 Repo público: no imprimir tokens, links ni IDs de Drive.
 """
@@ -153,10 +154,11 @@ def con_capitulos(desc, caps):
 
 
 # ---------- mail ----------
-def mail_floppy(gmail, p, hora):
+def mail_floppy(gmail, p, agenda):
     cuerpo = f"""Hola Flor!
 
-Ya están en YouTube los 3 bloques y el programa completo del #{p['numero']} ({p['invitado'] or 'sin invitado cargado'}), programados para el domingo a las {hora}.
+Ya están en YouTube el programa completo y los 3 bloques del #{p['numero']} ({p['invitado'] or 'sin invitado cargado'}), programados así:
+{agenda}
 
 Cargá los títulos y las descripciones en la app antes del domingo a las 18:30:
 {APP}
@@ -277,12 +279,19 @@ def main():
         desc_comp = con_capitulos(desc_comp, caps)
     descs["completo"] = desc_comp or PIE
 
-    # 3. Títulos, descripciones y publicación programada: primero el completo, después B1, B2 y B3
-    publicar = max(CUANDO, datetime.now(timezone.utc) + timedelta(minutes=3))
+    # 3. Títulos, descripciones y publicación programada.
+    #    Semana: completo el domingo, B1 el lunes, B2 el miércoles y B3 el viernes (los recaps de cada bloque salen
+    #    martes, jueves y sábado desde Informes). "ahora": todo ya, completo primero y un minuto entre cada uno.
+    #    Siempre el completo antes que los bloques, para que cada bloque lo pueda tener como video relacionado.
+    minimo = datetime.now(timezone.utc) + timedelta(minutes=3)
+    dias = {"completo": 0, 1: 1, 2: 3, 3: 5} if MODO != "ahora" else {"completo": 0, 1: 0, 2: 0, 3: 0}
+    cuando = {}
+    for k, clave in enumerate(["completo", 1, 2, 3]):
+        cuando[clave] = max(CUANDO + timedelta(days=dias[clave]), minimo) + timedelta(minutes=k if MODO == "ahora" else 0)
     programados = 0
-    videos = [(id_comp, p["titulo_completo"], descs["completo"]), (ids[1], p["titulo_b1"], descs[1]),
-              (ids[2], p["titulo_b2"], descs[2]), (ids[3], p["titulo_b3"], descs[3])]
-    for k, (vid, titulo, desc) in enumerate(videos):
+    videos = [(id_comp, p["titulo_completo"], descs["completo"], "completo"), (ids[1], p["titulo_b1"], descs[1], 1),
+              (ids[2], p["titulo_b2"], descs[2], 2), (ids[3], p["titulo_b3"], descs[3], 3)]
+    for vid, titulo, desc, clave in videos:
         if not titulo:
             raise RuntimeError("Faltan títulos en la tarjeta del programa")
         actual = yt.videos().list(part="status", id=vid).execute()["items"][0]["status"]
@@ -290,13 +299,18 @@ def main():
                                          "defaultLanguage": "es", "defaultAudioLanguage": "es"}}
         partes = "snippet"
         if actual["privacyStatus"] != "public":
-            cuerpo["status"] = {"privacyStatus": "private", "publishAt": (publicar + timedelta(minutes=k)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            cuerpo["status"] = {"privacyStatus": "private", "publishAt": cuando[clave].strftime("%Y-%m-%dT%H:%M:%SZ"),
                                 "selfDeclaredMadeForKids": False, "embeddable": True}
             partes = "snippet,status"
             programados += 1
         yt.videos().update(part=partes, body=cuerpo).execute()
-    hora = f"{publicar.astimezone(UY):%H:%M}"
-    log(f"Títulos y descripciones cargados; salen desde las {hora} del {publicar.astimezone(UY):%d/%m}")
+    DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+    agenda = ", ".join(f"{'completo' if c == 'completo' else 'B' + str(c)} {DIAS[t.astimezone(UY).weekday()]} {t.astimezone(UY):%d/%m %H:%M}"
+                       for c, t in cuando.items())
+    log(f"Títulos y descripciones cargados. Agenda: {agenda}")
+    vinculadas = rpc("pub_vincular_notas", p_programa=PROG_ID)
+    if vinculadas:
+        log(f"{vinculadas} nota(s) recibieron el link de su bloque")
 
     # 4. Lista de la temporada, cada uno en su lugar (una sola lectura: YouTube tarda en reflejar cada inserción)
     items, tok = [], None
@@ -307,7 +321,7 @@ def main():
         if not tok:
             break
     en_lista = [(i["contentDetails"]["videoId"], orden(i["snippet"]["title"])) for i in items]
-    for vid, titulo, _ in sorted(videos, key=lambda v: orden(v[1]) or (0, 0)):
+    for vid, titulo, _, _ in sorted(videos, key=lambda v: orden(v[1]) or (0, 0)):
         if vid in {v for v, _ in en_lista}:
             continue
         pos = sum(1 for _, o in en_lista if o and o < orden(titulo))
@@ -319,17 +333,16 @@ def main():
     # 5. Aviso a Floppy (solo la revisión del sábado)
     if MODO == "sabado":
         gmail = build("gmail", "v1", credentials=Credentials.from_authorized_user_info(json.loads(os.environ["GMAIL_TOKEN"])))
-        mail_floppy(gmail, p, hora)
+        mail_floppy(gmail, p, agenda)
         log("Mail a Floppy enviado")
 
-    ya = publicar <= datetime.now(timezone.utc) + timedelta(minutes=6)
-    dia = f"{publicar.astimezone(UY):%d/%m}"
+    ya = max(cuando.values()) <= datetime.now(timezone.utc) + timedelta(minutes=6)
     if not programados:
         estado, detalle = "publicada", f"Textos y capítulos actualizados en YouTube ({datetime.now(UY):%d/%m %H:%M})."
     elif ya:
-        estado, detalle = "publicada", f"Publicado el {dia} desde las {hora}: completo, B1, B2 y B3."
+        estado, detalle = "publicada", f"Publicado: {agenda}."
     else:
-        estado, detalle = "programada", f"Salen en YouTube el {dia} desde las {hora}: completo, B1, B2 y B3."
+        estado, detalle = "programada", f"Programado en YouTube: {agenda}."
     avisar(pub_estado=estado, pub_progreso=100, yt=True, etapa=4 if estado == "publicada" else p["etapa"],
            pub_detalle=detalle + (" Mail enviado a Floppy." if MODO == "sabado" else "")
            + " Falta asignar el completo como video relacionado de cada bloque (en Studio).")
