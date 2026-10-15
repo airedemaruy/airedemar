@@ -1,15 +1,19 @@
-# Publica un programa en YouTube: 3 bloques + programa completo (código en .github/publicar/programa.py).
+# Publica un programa en YouTube: programa completo + 3 bloques (código en .github/publicar/programa.py).
+# Lo disparan Supabase (sábado 14:00 "sabado", domingo 18:30 "aplicar") y los botones de la app ("ahora", "aplicar").
 name: Publicar programa
 
 on:
   workflow_dispatch:
     inputs:
       programa_id:
-        description: ID del programa en la app (ej. p31)
+        description: ID del programa en la app (ej. p32)
         required: true
       cuando:
         description: Hora de publicación (ISO, UTC)
         required: true
+      modo:
+        description: "sabado (subir y avisar a Floppy) | aplicar (textos y capítulos) | ahora (publicar ya)"
+        default: ahora
 
 concurrency:
   group: programa-${{ inputs.programa_id }}
@@ -31,5 +35,7 @@ jobs:
         env:
           PROGRAMA_ID: ${{ inputs.programa_id }}
           CUANDO: ${{ inputs.cuando }}
+          MODO: ${{ inputs.modo }}
           PUB_SECRETO: ${{ secrets.PUB_SECRETO }}
           GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+          GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
