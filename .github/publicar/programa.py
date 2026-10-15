@@ -279,6 +279,7 @@ def main():
 
     # 3. Títulos, descripciones y publicación programada: primero el completo, después B1, B2 y B3
     publicar = max(CUANDO, datetime.now(timezone.utc) + timedelta(minutes=3))
+    programados = 0
     videos = [(id_comp, p["titulo_completo"], descs["completo"]), (ids[1], p["titulo_b1"], descs[1]),
               (ids[2], p["titulo_b2"], descs[2]), (ids[3], p["titulo_b3"], descs[3])]
     for k, (vid, titulo, desc) in enumerate(videos):
@@ -292,6 +293,7 @@ def main():
             cuerpo["status"] = {"privacyStatus": "private", "publishAt": (publicar + timedelta(minutes=k)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                 "selfDeclaredMadeForKids": False, "embeddable": True}
             partes = "snippet,status"
+            programados += 1
         yt.videos().update(part=partes, body=cuerpo).execute()
     hora = f"{publicar.astimezone(UY):%H:%M}"
     log(f"Títulos y descripciones cargados; salen desde las {hora} del {publicar.astimezone(UY):%d/%m}")
@@ -322,9 +324,14 @@ def main():
 
     ya = publicar <= datetime.now(timezone.utc) + timedelta(minutes=6)
     dia = f"{publicar.astimezone(UY):%d/%m}"
-    avisar(pub_estado="publicada" if ya else "programada", pub_progreso=100, yt=True, etapa=4 if ya else p["etapa"],
-           pub_detalle=(f"Salen en YouTube el {dia} desde las {hora}: completo, B1, B2 y B3." if not ya else f"Publicado el {dia} a las {hora}.")
-           + (" Mail enviado a Floppy." if MODO == "sabado" else "")
+    if not programados:
+        estado, detalle = "publicada", f"Textos y capítulos actualizados en YouTube ({datetime.now(UY):%d/%m %H:%M})."
+    elif ya:
+        estado, detalle = "publicada", f"Publicado el {dia} desde las {hora}: completo, B1, B2 y B3."
+    else:
+        estado, detalle = "programada", f"Salen en YouTube el {dia} desde las {hora}: completo, B1, B2 y B3."
+    avisar(pub_estado=estado, pub_progreso=100, yt=True, etapa=4 if estado == "publicada" else p["etapa"],
+           pub_detalle=detalle + (" Mail enviado a Floppy." if MODO == "sabado" else "")
            + " Falta asignar el completo como video relacionado de cada bloque (en Studio).")
     log("Listo")
 
