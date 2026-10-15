@@ -230,10 +230,11 @@ dialog h3 { font-size: 22px; }
 @keyframes girar { to { transform: rotate(360deg); } }
 .notas-prog { display: grid; gap: 4px; min-width: 0; }
 .tv-dia { font-size: 11px; font-weight: 600; color: var(--teal); letter-spacing: .04em; }
-#f-nota details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
-#f-nota summary { cursor: pointer; padding: 10px 12px; font-weight: 600; }
-#f-nota summary .nota { font-weight: 400; margin-left: 4px; }
-#f-nota details .cuerpo { display: grid; gap: 12px; padding: 0 12px 12px; }
+#f-nota details, #f-programa details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+#f-nota summary, #f-programa summary { cursor: pointer; padding: 10px 12px; font-weight: 600; }
+#f-nota summary .nota, #f-programa summary .nota { font-weight: 400; margin-left: 4px; }
+#f-nota details .cuerpo, #f-programa details .cuerpo { display: grid; gap: 12px; padding: 0 12px 12px; }
+#f-nota .publicar, #f-programa .publicar { display: grid; gap: 8px; padding-top: 4px; border-top: 1px dashed var(--line); }
 .sinfecha { margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
 .sinfecha h4 { font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); display: flex; gap: 8px; margin-bottom: 8px; }
 .sinfecha .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
