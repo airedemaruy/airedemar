@@ -81,8 +81,12 @@ def orden(titulo):
 
 
 def seg_iso(d):
-    h, m, s = (int(x or 0) for x in re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", d).groups())
-    return h * 3600 + m * 60 + s
+    """Duración ISO de YouTube en segundos. Recién subido y procesando, YouTube devuelve "P0D": 0."""
+    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", d or "")
+    if not m:
+        return 0
+    h, mi, s = (int(x or 0) for x in m.groups())
+    return h * 3600 + mi * 60 + s
 
 
 # ---------- capítulos ----------
@@ -200,6 +204,7 @@ def main():
     ids = {b: id_yt(p[f"yt_b{b}"]) for b in (1, 2, 3)}
     id_comp = id_yt(p["yt_completo"])
 
+    rutas = {}
     # 1. Subidas que falten (bloques desde CANAL ONCE y el completo)
     if not all(ids.values()) or not id_comp:
         avisar(pub_progreso=10, pub_detalle="Buscando los bloques en la carpeta CANAL ONCE…")
@@ -219,7 +224,6 @@ def main():
         if sorted(bloques) != [1, 2, 3]:
             raise RuntimeError(f"En CANAL ONCE del #{n} esperaba los bloques 1, 2 y 3 y encontré {sorted(bloques) or 'ninguno'}")
         avisar(**{f"link_b{b}": f"https://drive.google.com/file/d/{bloques[b]}/view" for b in bloques})
-        rutas = {}
         for b in (1, 2, 3):
             rutas[b] = f"/tmp/b{b}.mp4"
             with open(rutas[b], "wb") as fh:
@@ -260,6 +264,9 @@ def main():
     # 2. Capítulos: los que escribió Floppy (o Claude) se respetan; si faltan, salen de los subtítulos de YouTube
     durs = {v["id"]: seg_iso(v["contentDetails"]["duration"])
             for v in yt.videos().list(part="contentDetails", id=",".join([ids[1], ids[2], ids[3]])).execute()["items"]}
+    for b in (1, 2, 3):  # recién subidos YouTube todavía no sabe la duración: se usa la del archivo bajado
+        if not durs.get(ids[b]) and b in rutas:
+            durs[ids[b]] = round(dur(rutas[b]))
     descs, caps_bloque = {}, {}
     for b in (1, 2, 3):
         desc = p[f"desc_b{b}"]
