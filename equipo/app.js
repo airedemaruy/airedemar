@@ -341,7 +341,9 @@ $('#f-programa').addEventListener('submit', async (ev) => {
 /* ================= INFORMES ================= */
 /* La etapa no se elige: sale de lo que ya está cargado. Graba → edita → coordina → se publica. */
 function etapaNota(n) {
-  if (n.link_ig || n.link_yt_short) return 5;
+  // Publicada = salió en todos los destinos tildados (no alcanza con uno: ej. Reel a mano y falta el Short)
+  const ig = n.pub_ig === false || !!n.link_ig, yt = n.pub_yt === false || !!n.link_yt_short;
+  if ((n.link_ig || n.link_yt_short) && ig && yt) return 5;
   if (n.aprobado && n.publicar_el) return 4;
   if (n.link_completa && n.link_vertical) return 3;
   if (n.link_completa) return 2;
