@@ -298,6 +298,7 @@ function abrirPrograma(id) {
     </div>`;
   f.dataset.id = p ? p.id : '';
   f.dataset.etapa = String(p?.etapa ?? 0);
+  inicialPrograma = p ? leerFormPrograma() : null;
   $('#d-programa').showModal();
 }
 
@@ -328,9 +329,15 @@ function leerFormPrograma() {
   for (const b of BLOQUES) { body[`link_b${b}`] = val(`#p-link-b${b}`); body[`relacionado_b${b}`] = $(`#p-rel-b${b}`).checked; }
   return body;
 }
+let inicialPrograma = null;  // misma idea que en las notas: guardar solo lo que se cambió (el proceso del sábado carga links mientras tanto)
 async function guardarPrograma(ok) {
-  const id = $('#f-programa').dataset.id;
-  return escribir(id ? sb.from('programas').update(leerFormPrograma()).eq('id', id) : sb.from('programas').insert(leerFormPrograma()), ok);
+  const id = $('#f-programa').dataset.id, body = leerFormPrograma();
+  if (!id) return escribir(sb.from('programas').insert(body), ok);
+  const cambios = Object.fromEntries(Object.entries(body).filter(([k, v]) => !inicialPrograma || JSON.stringify(v) !== JSON.stringify(inicialPrograma[k])));
+  if (!Object.keys(cambios).length) { if (ok) toast(ok); return true; }
+  const res = await escribir(sb.from('programas').update(cambios).eq('id', id), ok);
+  if (res) inicialPrograma = { ...inicialPrograma, ...cambios };
+  return res;
 }
 $('#f-programa').addEventListener('submit', async (ev) => {
   ev.preventDefault();
@@ -612,6 +619,7 @@ function abrirNota(id, paso) {
   f.dataset.id = n ? n.id : '';
   f.dataset.paso = String(actual);
   contarCopy();
+  inicialNota = n ? leerFormNota() : null;  // foto de lo que se ve al abrir, para guardar solo lo que cambie
   if (!$('#d-nota').open) $('#d-nota').showModal();
 }
 function mostrarPaso(i) {
@@ -701,9 +709,17 @@ function errorNota(body) {
   if (body.colaboradores.split(', ').filter(Boolean).length > 3) return 'Instagram permite hasta 3 collabs.';
   return '';
 }
+/* Al guardar se mandan solo los campos que la persona cambió desde que abrió la ventana: así no se pisa
+   lo que el sistema cargó mientras tanto (ej. el link del Short que guarda la publicación automática). */
+let inicialNota = null;
 async function guardarNota(body, ok) {
   const id = $('#f-nota').dataset.id;
-  return escribir(id ? sb.from('notas').update(body).eq('id', id) : sb.from('notas').insert(body), ok);
+  if (!id) return escribir(sb.from('notas').insert(body), ok);
+  const cambios = Object.fromEntries(Object.entries(body).filter(([k, v]) => !inicialNota || JSON.stringify(v) !== JSON.stringify(inicialNota[k])));
+  if (!Object.keys(cambios).length) { if (ok) toast(ok); return true; }
+  const res = await escribir(sb.from('notas').update(cambios).eq('id', id), ok);
+  if (res) inicialNota = { ...inicialNota, ...cambios };
+  return res;
 }
 $('#f-nota').addEventListener('submit', async (ev) => {
   ev.preventDefault();
@@ -750,7 +766,11 @@ function refrescarPubAbierta() {
   const caja = $('#n-pub'), id = $('#f-nota').dataset.id;
   if (!caja || !$('#d-nota').open || !id) return;
   const n = S.notas.find(x => x.id === id);
-  if (n && caja.dataset.clave !== clavePub(n)) { caja.dataset.clave = clavePub(n); caja.innerHTML = bloquePub(n); }
+  if (!n || caja.dataset.clave === clavePub(n)) return;
+  const antes = Number(caja.dataset.clave.split('|')[0]);
+  caja.dataset.clave = clavePub(n); caja.innerHTML = bloquePub(n);
+  // Terminó una publicación en curso: se vuelve a abrir la nota para que pasos y campos muestren lo nuevo
+  if (antes > 0 && antes < 100 && !enCurso(n)) abrirNota(id);
 }
 function botonesPub(n) {
   if (!puedePublicar()) return '<span class="nota">Programan y publican Floppy o Juandi.</span>';
