@@ -376,16 +376,16 @@ function tarjetaNota(n) {
   const e = etapaNota(n), p = programa(n.programa_id);
   const prog = p ? `<span class="chip line">ADM #${esc(p.numero ?? '?')}${n.bloque ? ' · B' + esc(n.bloque) : ''}</span>` : (e >= 3 ? '<span class="chip warn">sin programa</span>' : '');
   const pub = n.publicar_el ? `<span class="chip line">redes ${esc(fechaCorta(diaPub(n)))} ${esc(horaPub(n))}</span>` : '';
-  const links = `<span class="pubs"><span class="pub ${n.link_crudo ? 'on' : ''}">Crudo</span><span class="pub ${n.link_completa ? 'on' : ''}">Completa</span><span class="pub ${n.link_vertical ? 'on' : ''}">Vertical</span></span>`;
-  const quien = [n.grabo && `<span class="chip" title="Grabó">🎥 ${esc(n.grabo)}</span>`, n.editor && `<span class="chip" title="Edita la horizontal">✂️ H · ${esc(n.editor)}</span>`, n.editor_vertical && `<span class="chip" title="Edita el vertical">✂️ V · ${esc(n.editor_vertical)}</span>`].filter(Boolean).join('');
-  const faltan = (e === 3 && !(n.copy_ig && n.yt_titulo) ? '<span class="chip alert">faltan textos</span>' : '') +
+  const faltan =
     ({ programada: '<span class="chip ok">⏱ programada</span>', publicando: '<span class="chip warn">⏳ publicando</span>', error: '<span class="chip alert">⚠️ error al publicar</span>' }[n.pub_estado] || '') +
     (faltaRelacionado(n) ? '<span class="chip alert" title="Asignar la nota completa como video relacionado del Short en YouTube Studio">falta video relacionado</span>' : '');
+  const act = pasoActual(n), hecho = pasosHechos(n)[act];
+  const proximo = hecho ? '' : `<span class="proximo-paso">→ ${PASOS_NOTA[act]} · ${esc(quienPaso(n, act))}</span>`;
   return `<div class="card" role="button" tabindex="0" draggable="true" data-nota="${esc(n.id)}">
-    <span class="tt"><span>${esc(n.titulo)}</span></span>
+    <span class="tt"><span>${esc(n.titulo)}</span>${puntosNota(n)}</span>
+    ${proximo}
     ${n.entrevistados ? `<span class="meta">${esc(entrevistadosCorto(n))}</span>` : ''}
-    <span class="flags">${prog}${pub}${links}</span>
-    ${quien || faltan ? `<span class="flags">${quien}${faltan}</span>` : ''}
+    ${prog || pub || faltan ? `<span class="flags">${prog}${pub}${faltan}</span>` : ''}
     ${n.pendientes ? `<span class="pend">${esc(n.pendientes)}</span>` : ''}
   </div>`;
 }
@@ -503,18 +503,67 @@ document.addEventListener('drop', (ev) => {
   else { const n = S.notas.find(x => x.id === id); mover(tabla, id, { publicar_el: fechaHora(d.dataset.soltarFecha, n && horaPub(n)) }); }
 });
 
-function abrirNota(id) {
+/* La nota se trabaja por pasos: arriba la barra (hecho / actual / falta) y abajo solo el paso actual,
+   con qué falta y quién lo hace. "Ver todos los datos" muestra el formulario entero. */
+const PASOS_NOTA = ['Grabación', 'Horizontal', 'Vertical', 'Textos', 'Programar', 'Publicada'];
+const textosListos = (n) => (!n.pub_ig || !!n.copy_ig || !!n.link_ig) && (!n.pub_yt || !!n.yt_titulo || !!n.link_yt_short);
+function pasosHechos(n) {
+  const pub = etapaNota(n) === 5;
+  return [!!n.link_crudo || pub, !!n.link_completa || pub, !!n.link_vertical || pub, textosListos(n) || pub,
+          (n.aprobado && !!n.publicar_el) || pub, pub && !faltaRelacionado(n)];
+}
+function pasoActual(n) {
+  if (!n) return 0;
+  const h = pasosHechos(n), i = h.indexOf(false);
+  return i === -1 ? 5 : i;
+}
+function quienPaso(n, i) {
+  return [n?.grabo || 'quien graba', n?.editor || EDITOR_HORIZONTAL, n?.editor_vertical || EDITOR_VERTICAL,
+          'coordinación', 'Floppy o Juandi', 'Floppy o Juandi'][i];
+}
+function quePasoFalta(n, i) {
+  if (!n) return 'Cargá el rótulo, quiénes hablan y el link del crudo en Drive.';
+  const hechos = pasosHechos(n);
+  if (hechos[i]) return i === 5 ? 'Todo listo: publicada y con su video relacionado.' : 'Hecho. Podés revisarlo o corregirlo acá.';
+  return [
+    'Pegá el link del crudo en Drive y anotá quiénes hablan.',
+    `Cuando ${n.editor || EDITOR_HORIZONTAL} termine la nota completa (horizontal, para TV y YouTube), pegá el link acá.`,
+    'Pegá el link del vertical (1080×1920, menos de 300 MB). Si el Reel ya salió a mano, pegá el link del Reel.',
+    'Elegí programa y bloque, dónde se publica y escribí los textos.',
+    n.pub_estado === 'error' ? 'La publicación falló: mirá el detalle, corregí y probá de nuevo.' : 'Revisá día y hora y tocá Programar, o Publicar ahora.',
+    n.link_yt_short && n.link_yt_completa && !n.yt_relacionado ? 'Falta asignar la nota completa como video relacionado del Short (en Studio) y tildarlo.' : 'Esperando que salga en redes.',
+  ][i];
+}
+function barraPasos(n, actual) {
+  const hechos = n ? pasosHechos(n) : [];
+  return `<ol class="pasos" aria-label="Pasos de la nota">${PASOS_NOTA.map((p, i) => `
+    <li><button type="button" data-ir-paso="${i}" class="${hechos[i] ? 'hecho' : ''} ${i === actual ? 'actual' : ''}" ${!n && i > 0 ? 'disabled' : ''}
+      aria-current="${i === actual ? 'step' : 'false'}"><span class="punto">${hechos[i] ? '✓' : i + 1}</span><span class="nombre">${p}</span></button></li>`).join('')}</ol>`;
+}
+function puntosNota(n) {
+  const h = pasosHechos(n), act = pasoActual(n);
+  return `<span class="mini-pasos" title="${PASOS_NOTA.map((p, i) => (h[i] ? '✓ ' : '· ') + p).join('  ')}">${h.map((x, i) => `<i class="${x ? 'hecho' : i === act ? 'actual' : ''}"></i>`).join('')}</span>`;
+}
+
+function abrirNota(id, paso) {
   const n = id ? S.notas.find(x => x.id === id) : null;
-  const e = n ? etapaNota(n) : 0;
-  const abierta = !n || e === 0 ? 1 : e === 1 ? 2 : e === 2 ? 3 : e <= 4 ? 4 : 5;
+  const actual = paso ?? pasoActual(n);
   const gente = (actual, extra) => [...new Set([extra, ...responsables(), actual].filter(Boolean))];
   const sel = (id, actual, extra) => `<select id="${id}"><option value="">—</option>${gente(actual, extra).map(r => `<option ${r === actual ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>`;
   const progs = [...S.programas].sort((a, b) => (b.numero || 0) - (a.numero || 0));
-  const seccion = (i, titulo, quien, cuerpo) => `<details ${abierta === i ? 'open' : ''}><summary>${i} · ${titulo} <span class="nota">${quien}</span></summary><div class="cuerpo">${cuerpo}</div></details>`;
+  const ultimo = PASOS_NOTA.length - 1;
+  const seccion = (i, titulo, quien, cuerpo) => `<section class="paso" data-paso="${i - 1}" ${i - 1 === actual ? '' : 'hidden'}>
+      <header><span class="nota">Paso ${i} de ${PASOS_NOTA.length} · ${esc(quienPaso(n, i - 1))}</span><h4>${PASOS_NOTA[i - 1]}</h4>
+      <p class="que-falta ${n && pasosHechos(n)[i - 1] ? 'ok' : ''}">${esc(quePasoFalta(n, i - 1))}</p></header>
+      <div class="cuerpo">${cuerpo}</div>
+      ${n ? `<div class="acciones nav-pasos">${i > 1 ? `<button type="button" class="btn quiet small" data-ir-paso="${i - 2}">← ${PASOS_NOTA[i - 2]}</button>` : '<span></span>'}
+        ${i - 1 < ultimo ? `<button type="button" class="btn" data-guardar-seguir="${i}">Guardar y seguir: ${PASOS_NOTA[i]} →</button>` : ''}</div>` : ''}
+    </section>`;
   const f = $('#f-nota');
+  f.classList.remove('todo');
   f.innerHTML = `
     <h3>${n ? esc(n.titulo) : 'Nueva nota'}</h3>
-    ${n ? `<div class="nota">Etapa: <b>${ETAPAS_NOTA[e]}</b>${HINTS_NOTA[e] ? ' · ' + HINTS_NOTA[e] : ''}</div>` : '<div class="nota">Quien graba carga esto. Lo demás lo completan el editor y el coordinador.</div>'}
+    ${barraPasos(n, actual)}
     ${seccion(1, 'Grabación', 'quien graba', `
       <label class="f"><span>Rótulo (título breve)</span><input id="n-titulo" required value="${esc(n?.titulo)}" placeholder="Ej: Mural Marino · Punta Ballena"></label>
       <label class="f"><span>Entrevistados (nombre y @ de IG, uno por línea)</span><textarea id="n-entrevistados" placeholder="Paula Rodríguez @paulirodriguez.psi">${esc(n?.entrevistados)}</textarea></label>
@@ -526,7 +575,7 @@ function abrirNota(id) {
     ${seccion(3, 'Edición vertical', 'recorte: Reel y Short', `
       <label class="f"><span>Quién edita</span>${sel('n-editor-v', n ? n.editor_vertical : EDITOR_VERTICAL)}</label>
       <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB · Drive o el link del Reel si ya se publicó a mano</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/… o https://www.instagram.com/reel/…"></label>`)}
-    ${seccion(4, 'Coordinación', 'coordinador', `
+    ${seccion(4, 'Textos', 'coordinación', `
       <div class="campos">
         <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
         <label class="f"><span>Bloque del programa</span><select id="n-bloque"><option value="">—</option>${[1, 2, 3].map(b => `<option value="${b}" ${n?.bloque === b ? 'selected' : ''}>B${b} · recap el ${['', 'martes', 'jueves', 'sábado'][b]}</option>`).join('')}</select></label>
@@ -539,26 +588,35 @@ function abrirNota(id) {
       <label class="f"><span>Collabs de IG (hasta 3 usuarios, sin @; tienen que ser cuentas públicas y aceptar la invitación)</span><input id="n-collabs" value="${esc(n?.colaboradores)}" placeholder="afavordelmar_, ipereyrarivero" autocapitalize="none" spellcheck="false"></label>
       <div><button type="button" class="btn quiet small" id="n-desde-copy">Completar YouTube desde el copy</button></div>
       <label class="f"><span>Título de YouTube</span><input id="n-yt-titulo" maxlength="100" value="${esc(n?.yt_titulo)}"></label>
-      <label class="f"><span>Descripción de YouTube</span><textarea id="n-yt-desc" rows="5">${esc(n?.yt_descripcion)}</textarea></label>
+      <label class="f"><span>Descripción de YouTube</span><textarea id="n-yt-desc" rows="5">${esc(n?.yt_descripcion)}</textarea></label>`)}
+    ${seccion(5, 'Programar', 'Floppy o Juandi', `
+      ${n ? `<div class="nota resumen-destinos">${[n.pub_ig && !n.link_ig ? 'Reel en Instagram' : '', n.pub_yt && !n.link_yt_short ? 'Short en YouTube' : ''].filter(Boolean).join(' + ') || 'Nada para publicar: revisá "Publicar en" en el paso Textos.'}</div>` : ''}
       <div class="campos">
         <label class="f"><span>Día de publicación en redes</span><input id="n-dia" type="date" value="${esc(n ? diaPub(n) : '')}"></label>
         <label class="f"><span>Hora</span><input id="n-hora" type="time" value="${esc(n ? horaPub(n) : HORA_PUBLICAR)}"></label>
       </div>
       ${n ? `<div class="publicar" id="n-pub" data-clave="${esc(clavePub(n))}">${bloquePub(n)}</div>` : ''}`)}
-    ${seccion(5, 'Publicación', 'se completa sola al publicar', `
+    ${seccion(6, 'Publicada', 'se completa sola al publicar', `
       <label class="f"><span>Reel en IG</span><input id="n-link-ig" type="url" value="${esc(n?.link_ig)}"></label>
       <label class="f"><span>Short en YouTube</span><input id="n-link-short" type="url" value="${esc(n?.link_yt_short)}"></label>
       <label class="f"><span>Nota completa en YouTube</span><input id="n-link-ytc" type="url" value="${esc(n?.link_yt_completa)}"></label>
       <div class="checks"><label><input type="checkbox" id="n-relacionado" ${n?.yt_relacionado ? 'checked' : ''}> El Short tiene la nota completa como "video relacionado" (se asigna a mano en YouTube Studio)</label></div>
       ${idYoutube(n?.link_yt_short) ? `<a class="nota" href="https://studio.youtube.com/video/${esc(idYoutube(n.link_yt_short))}/edit" target="_blank" rel="noopener">Abrir el Short en YouTube Studio ↗</a>` : ''}`)}
-    <label class="f"><span>Pendientes (uno por línea)</span><textarea id="n-pendientes">${esc(n?.pendientes)}</textarea></label>
-    <div class="acciones" style="justify-content:space-between">
-      <span id="n-borrar-zona">${n ? '<button type="button" class="btn danger" id="n-borrar">Borrar</button>' : ''}</span>
-      <span class="acciones"><button type="button" class="btn quiet" id="n-cancelar">Cancelar</button><button type="submit" class="btn">Guardar</button></span>
+    <label class="f solo-todo"><span>Pendientes (uno por línea)</span><textarea id="n-pendientes">${esc(n?.pendientes)}</textarea></label>
+    <div class="acciones pie-nota">
+      <span id="n-borrar-zona">${n ? '<button type="button" class="btn danger small" id="n-borrar">Borrar</button>' : ''}</span>
+      ${n ? '<button type="button" class="btn quiet small" id="n-ver-todo">Ver todos los datos</button>' : ''}
+      <span class="acciones"><button type="button" class="btn quiet" id="n-cancelar">Cerrar</button><button type="submit" class="btn ${n ? 'quiet' : ''}">${n ? 'Guardar' : 'Crear nota'}</button></span>
     </div>`;
   f.dataset.id = n ? n.id : '';
+  f.dataset.paso = String(actual);
   contarCopy();
-  $('#d-nota').showModal();
+  if (!$('#d-nota').open) $('#d-nota').showModal();
+}
+function mostrarPaso(i) {
+  const f = $('#f-nota'); f.classList.remove('todo'); f.dataset.paso = String(i);
+  f.querySelectorAll('.paso').forEach(s => { s.hidden = Number(s.dataset.paso) !== i; });
+  f.querySelectorAll('.pasos button').forEach(b => { const a = Number(b.dataset.irPaso) === i; b.classList.toggle('actual', a); b.setAttribute('aria-current', a ? 'step' : 'false'); });
 }
 /* Título y descripción de YouTube armados con reglas a partir del copy de IG (sin IA, gratis). */
 const SUFIJO_SHORT = ' | Aire de Mar #Shorts';
@@ -593,6 +651,22 @@ $('#f-nota').addEventListener('change', (ev) => {
 $('#f-nota').addEventListener('click', async (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   const f = $('#f-nota');
+  if (t.dataset.irPaso !== undefined) { mostrarPaso(Number(t.dataset.irPaso)); return; }
+  if (t.id === 'n-ver-todo') {
+    const todo = !f.classList.contains('todo');
+    f.classList.toggle('todo', todo);
+    f.querySelectorAll('.paso').forEach(s => { s.hidden = !todo && Number(s.dataset.paso) !== Number(f.dataset.paso); });
+    t.textContent = todo ? 'Ver por pasos' : 'Ver todos los datos';
+    return;
+  }
+  if (t.dataset.guardarSeguir) {
+    const body = leerFormNota(), err = errorNota(body);
+    if (err) { toast(err); return; }
+    if (!(await guardarNota(body, 'Guardado.'))) return;
+    await cargar('notas'); render();
+    abrirNota(f.dataset.id, Number(t.dataset.guardarSeguir));
+    return;
+  }
   if (t.id === 'n-cancelar') $('#d-nota').close();
   if (['n-programar', 'n-publicar-ahora', 'n-publicar-si', 'n-cancelar-pub', 'n-ensayo'].includes(t.id)) { await accionPub(t); return; }
   if (t.id === 'n-publicar-no') { const n = S.notas.find(x => x.id === f.dataset.id); $('#n-pub-zona').innerHTML = botonesPub(n); return; }
