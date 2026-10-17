@@ -509,7 +509,8 @@ const PASOS_NOTA = ['Grabación', 'Horizontal', 'Vertical', 'Textos', 'Programar
 const textosListos = (n) => (!n.pub_ig || !!n.copy_ig || !!n.link_ig) && (!n.pub_yt || !!n.yt_titulo || !!n.link_yt_short);
 function pasosHechos(n) {
   const pub = etapaNota(n) === 5;
-  return [!!n.link_crudo || pub, !!n.link_completa || pub, !!n.link_vertical || pub, textosListos(n) || pub,
+  // La grabación cuenta como hecha si ya hay edición (notas viejas sin link del crudo)
+  return [!!(n.link_crudo || n.link_completa || n.link_vertical) || pub, !!n.link_completa || pub, !!n.link_vertical || pub, textosListos(n) || pub,
           (n.aprobado && !!n.publicar_el) || pub, pub && !faltaRelacionado(n)];
 }
 function pasoActual(n) {
