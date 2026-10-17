@@ -558,7 +558,7 @@ function abrirNota(id, paso) {
       <p class="que-falta ${n && pasosHechos(n)[i - 1] ? 'ok' : ''}">${esc(quePasoFalta(n, i - 1))}</p></header>
       <div class="cuerpo">${cuerpo}</div>
       ${n ? `<div class="acciones nav-pasos">${i > 1 ? `<button type="button" class="btn quiet small" data-ir-paso="${i - 2}">← ${PASOS_NOTA[i - 2]}</button>` : '<span></span>'}
-        ${i - 1 < ultimo ? `<button type="button" class="btn" data-guardar-seguir="${i}">Guardar y seguir: ${PASOS_NOTA[i]} →</button>` : ''}</div>` : ''}
+        ${i - 1 < ultimo - 1 ? `<button type="button" class="btn" data-guardar-seguir="${i}">Guardar y seguir: ${PASOS_NOTA[i]} →</button>` : ''}</div>` : ''}
     </section>`;
   const f = $('#f-nota');
   f.classList.remove('todo');
@@ -719,10 +719,11 @@ $('#f-nota').addEventListener('submit', async (ev) => {
 
 /* ---------- publicación en IG y YouTube (la hace GitHub Actions; la dispara Supabase) ---------- */
 const puedePublicar = () => ['juandi', 'floppy'].includes(S.yo?.usuario);
+const destinosNota = (n) => [n.pub_ig !== false && !n.link_ig && 'Instagram', n.pub_yt !== false && !n.link_yt_short && 'YouTube'].filter(Boolean).join(' y ') || 'redes';
 function estadoPub(n) {
   const cuando = n.publicar_el ? `${fechaCorta(diaPub(n))} ${horaPub(n)}` : '';
   const txt = {
-    programada: `⏱ Programada para el ${cuando}: sale sola en Instagram y YouTube.`,
+    programada: `⏱ Programada para el ${cuando}: sale sola en ${destinosNota(n)}.`,
     publicando: `⏳ Publicando… ${n.pub_detalle}`,
     publicada: `✅ ${n.pub_detalle || 'Publicada'}`,
     error: `⚠️ No se pudo publicar. ${n.pub_detalle}`,
@@ -736,7 +737,7 @@ function progresoPub(n) {
   const p = Math.max(0, Math.min(100, n.pub_progreso)), largo = 113.1;
   return `<div class="progreso" role="status" aria-live="polite">
     <span class="anillo"><svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="18" class="fondo"/><circle cx="22" cy="22" r="18" class="avance" style="stroke-dashoffset:${(largo * (1 - p / 100)).toFixed(1)}"/></svg><b>${p}%</b></span>
-    <div><b>${n.pub_estado === 'publicando' ? 'Publicando en Instagram y YouTube' : 'Probando sin publicar'}</b><div class="nota">${esc(n.pub_detalle || 'Arrancando…')}</div>
+    <div><b>${n.pub_estado === 'publicando' ? `Publicando en ${[n.pub_ig !== false && 'Instagram', n.pub_yt !== false && 'YouTube'].filter(Boolean).join(' y ')}` : 'Probando sin publicar'}</b><div class="nota">${esc(n.pub_detalle || 'Arrancando…')}</div>
     <div class="nota">Podés cerrar esta ventana: sigue sola.</div></div>
   </div>`;
 }
@@ -761,7 +762,7 @@ function botonesPub(n) {
 async function llamarPublicar(id, cuando, ensayo = false) {
   const { data, error } = await sb.rpc('publicar_nota', { p_id: id, p_cuando: cuando, p_ensayo: ensayo });
   if (error) { toast('No se pudo: ' + error.message); return false; }
-  if (data === 'programada') toast('Programada. Sale sola a esa hora en IG y YouTube.');
+  if (data === 'programada') { const n = S.notas.find(x => x.id === id); toast(`Programada. Sale sola a esa hora en ${n ? destinosNota(n) : 'redes'}.`); }
   return data;
 }
 async function accionPub(t) {
@@ -778,7 +779,8 @@ async function accionPub(t) {
     if (body.pub_ig && !body.copy_ig) { toast('Para Instagram falta el copy.'); return; }
     if (body.pub_yt && !body.yt_titulo) { toast('Para YouTube falta el título (podés usar "Completar YouTube desde el copy").'); return; }
     if (t.id === 'n-publicar-ahora') {
-      $('#n-pub-zona').innerHTML = '<span class="nota">¿Publicar ya en Instagram y YouTube?</span><button type="button" class="btn" id="n-publicar-si">Sí, publicar</button><button type="button" class="btn quiet" id="n-publicar-no">No</button>';
+      const donde = [body.pub_ig && 'el Reel en Instagram', body.pub_yt && 'el Short en YouTube'].filter(Boolean).join(' y ');
+      $('#n-pub-zona').innerHTML = `<span class="nota">¿Publicar ya ${esc(donde)}?</span><button type="button" class="btn" id="n-publicar-si">Sí, publicar</button><button type="button" class="btn quiet" id="n-publicar-no">No</button>`;
       return;
     }
     if (t.id === 'n-programar') {
