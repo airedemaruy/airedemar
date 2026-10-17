@@ -80,100 +80,135 @@ def main():
     nota, ig_token = datos["nota"], datos["ig_token"]
     log(f"Nota: {nota['titulo']} | {'ENSAYO (no se publica)' if ENSAYO else 'publicar a las ' + CUANDO.isoformat()}")
 
-    avisar(pub_progreso=10, pub_detalle="Bajando el video de Drive…")
+    PUB_IG, PUB_YT = nota.get("pub_ig", True), nota.get("pub_yt", True)
     creds = Credentials.from_authorized_user_info(json.loads(os.environ["GOOGLE_TOKEN"]))
     creds.refresh(Request())
 
-    # 1. Bajar el vertical de Drive
-    drive = build("drive", "v3", credentials=creds)
-    fid = id_drive(nota["link_vertical"])
-    meta = drive.files().get(fileId=fid, fields="size,mimeType", supportsAllDrives=True).execute()
-    with open(VIDEO, "wb") as f:
-        bajada = MediaIoBaseDownload(f, drive.files().get_media(fileId=fid, supportsAllDrives=True), chunksize=32 * 2**20)
-        listo = False
-        while not listo:
-            _, listo = bajada.next_chunk()
-    log(f"Video bajado de Drive ({int(meta['size']) // 2**20} MB)")
-    avisar(pub_progreso=25, pub_detalle="Subiendo a YouTube…")
+    # 1. Conseguir el vertical: de Drive, o del Reel ya publicado en Instagram (si se subió a mano)
+    origen_ig = "instagram.com" in nota["link_vertical"]
+    if origen_ig:
+        avisar(pub_progreso=10, pub_detalle="Bajando el video del Reel de Instagram…")
+        codigo = re.search(r"/(?:reel|p)/([\w-]+)", nota["link_vertical"])
+        if not codigo:
+            raise RuntimeError("El link de Instagram no es de un Reel")
+        url_video, siguiente = None, f"{IG_API}/me/media?fields=permalink,media_url,media_type&limit=50"
+        for _ in range(6):  # hasta ~300 publicaciones hacia atrás
+            r = requests.get(siguiente, headers={"Authorization": f"Bearer {ig_token}"}, timeout=60).json()
+            m = next((x for x in r.get("data", []) if codigo.group(1) in (x.get("permalink") or "")), None)
+            if m:
+                url_video = m.get("media_url")
+                break
+            siguiente = r.get("paging", {}).get("next")
+            if not siguiente:
+                break
+        if not url_video:
+            raise RuntimeError("No encontré ese Reel en la cuenta de @airedemar.uy")
+        with requests.get(url_video, stream=True, timeout=300) as r, open(VIDEO, "wb") as f:
+            r.raise_for_status()
+            for trozo in r.iter_content(8 * 2**20):
+                f.write(trozo)
+        log(f"Video bajado del Reel de Instagram ({os.path.getsize(VIDEO) // 2**20} MB)")
+    else:
+        avisar(pub_progreso=10, pub_detalle="Bajando el video de Drive…")
+        drive = build("drive", "v3", credentials=creds)
+        fid = id_drive(nota["link_vertical"])
+        meta = drive.files().get(fileId=fid, fields="size,mimeType", supportsAllDrives=True).execute()
+        with open(VIDEO, "wb") as f:
+            bajada = MediaIoBaseDownload(f, drive.files().get_media(fileId=fid, supportsAllDrives=True), chunksize=32 * 2**20)
+            listo = False
+            while not listo:
+                _, listo = bajada.next_chunk()
+        log(f"Video bajado de Drive ({int(meta['size']) // 2**20} MB)")
 
     # 2. YouTube: privado + publishAt (o privado y se borra, si es ensayo)
-    yt = build("youtube", "v3", credentials=creds)
     publicar_yt = max(CUANDO, datetime.now(timezone.utc) + timedelta(minutes=3))
-    estado = {"privacyStatus": "private", "selfDeclaredMadeForKids": False}
-    if not ENSAYO:
-        estado["publishAt"] = publicar_yt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    cuerpo = {"snippet": {"title": nota["yt_titulo"][:100], "description": nota["yt_descripcion"] or nota["copy_ig"],
-                          "categoryId": "17", "defaultLanguage": "es"}, "status": estado}
-    if ENSAYO:
-        # El ensayo no sube: cada subida gasta 1600 de las 10.000 unidades diarias de la API, aunque después se borre
-        yt.channels().list(part="id", mine=True).execute()
-        log("YouTube OK (ensayo: acceso verificado, no se subió nada)")
-        avisar(pub_progreso=50, pub_detalle="YouTube respondió bien. Subiendo a Instagram…")
+    if PUB_YT:
+        yt = build("youtube", "v3", credentials=creds)
+        estado = {"privacyStatus": "private", "selfDeclaredMadeForKids": False}
+        if not ENSAYO:
+            estado["publishAt"] = publicar_yt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        cuerpo = {"snippet": {"title": nota["yt_titulo"][:100], "description": nota["yt_descripcion"] or nota["copy_ig"],
+                              "categoryId": "17", "defaultLanguage": "es"}, "status": estado}
+        if ENSAYO:
+            # El ensayo no sube: cada subida gasta 1600 de las 10.000 unidades diarias de la API, aunque después se borre
+            yt.channels().list(part="id", mine=True).execute()
+            log("YouTube OK (ensayo: acceso verificado, no se subió nada)")
+            avisar(pub_progreso=50, pub_detalle="YouTube respondió bien. Subiendo a Instagram…")
+        else:
+            subida = yt.videos().insert(part="snippet,status", body=cuerpo,
+                                        media_body=MediaFileUpload(VIDEO, mimetype="video/mp4", resumable=True, chunksize=16 * 2**20))
+            resp = None
+            while resp is None:
+                _, resp = subida.next_chunk()
+            vid = resp["id"]
+            avisar(link_yt_short=f"https://youtu.be/{vid}", pub_progreso=50,
+                   pub_detalle=f"YouTube listo (sale a las {publicar_yt.astimezone(UY):%H:%M}). Subiendo a Instagram…")
+            log(f"YouTube OK: programado para {publicar_yt.isoformat()}")
+
     else:
-        subida = yt.videos().insert(part="snippet,status", body=cuerpo,
-                                    media_body=MediaFileUpload(VIDEO, mimetype="video/mp4", resumable=True, chunksize=16 * 2**20))
-        resp = None
-        while resp is None:
-            _, resp = subida.next_chunk()
-        vid = resp["id"]
-        avisar(link_yt_short=f"https://youtu.be/{vid}", pub_progreso=50,
-               pub_detalle=f"YouTube listo (sale a las {publicar_yt.astimezone(UY):%H:%M}). Subiendo a Instagram…")
-        log(f"YouTube OK: programado para {publicar_yt.isoformat()}")
+        log("YouTube: no se publica (destildado)")
 
     # 3. Instagram: adjunto temporal en una release + Reel con video_url
-    tag = f"tmp-pub-{NOTA_ID[:8]}-{os.environ.get('GITHUB_RUN_ID', int(time.time()))}"
-    subprocess.run(["gh", "release", "create", tag, VIDEO, "--repo", REPO, "--prerelease",
-                    "--title", "Temporal (se borra solo)", "--notes", "Archivo temporal para publicar en Instagram."],
-                   check=True, capture_output=True)
-    try:
-        url = f"https://github.com/{REPO}/releases/download/{tag}/vertical.mp4"
-        uid = ig("GET", "me", ig_token, params={"fields": "user_id"})["user_id"]
-        datos_reel = {"media_type": "REELS", "video_url": url, "caption": nota["copy_ig"], "share_to_feed": "true"}
-        collabs = [u.lstrip("@") for u in re.split(r"[,\s]+", nota.get("colaboradores") or "") if u.strip("@")][:3]
-        sin_invitar = []
+    if PUB_IG:
+        tag = f"tmp-pub-{NOTA_ID[:8]}-{os.environ.get('GITHUB_RUN_ID', int(time.time()))}"
+        subprocess.run(["gh", "release", "create", tag, VIDEO, "--repo", REPO, "--prerelease",
+                        "--title", "Temporal (se borra solo)", "--notes", "Archivo temporal para publicar en Instagram."],
+                       check=True, capture_output=True)
         try:
-            cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(collabs)} if collabs else {})})["id"]
-        except RuntimeError as e:
-            if not collabs or "not visible" not in str(e).lower():
-                raise
-            # Algún collab es privado o no existe: se publica con los que sí se pueden invitar
-            validos = []
-            for u in collabs:
-                try:
-                    ig("POST", f"{uid}/media", ig_token, data={**datos_reel, "collaborators": json.dumps([u])})
-                    validos.append(u)
-                except RuntimeError:
-                    sin_invitar.append(u)
-            cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(validos)} if validos else {})})["id"]
-            log(f"{len(sin_invitar)} collab(s) no se pudieron invitar (cuenta privada o usuario inexistente)")
-        avisar(pub_progreso=65, pub_detalle="Instagram está procesando el video…")
-        aviso_collabs = f" No se pudo invitar como collab a: {', '.join('@' + u for u in sin_invitar)} (cuenta privada o usuario mal escrito)." if sin_invitar else ""
-        for _ in range(90):
-            st = ig("GET", cont, ig_token, params={"fields": "status_code,status"})
-            if st["status_code"] in ("FINISHED", "ERROR", "EXPIRED"):
-                break
-            time.sleep(10)
-        if st["status_code"] != "FINISHED":
-            raise RuntimeError(f"Instagram no pudo procesar el video: {st.get('status')}")
-        log("Instagram procesó el video")
-        if ENSAYO:
-            log("Ensayo: no se publica en Instagram")
-            avisar(pub_progreso=100, pub_detalle=f"Ensayo OK {datetime.now(UY):%d/%m %H:%M}: Drive, YouTube e Instagram respondieron bien. No se publicó nada.{aviso_collabs}")
-            return
-        espera = (CUANDO - datetime.now(timezone.utc)).total_seconds()
-        avisar(pub_progreso=85, pub_detalle="Instagram procesó el video. Publicando…" if espera <= 0
-               else f"Todo listo. Sale a las {CUANDO.astimezone(UY):%H:%M}…")
-        if espera > 0:
-            log(f"Esperando {int(espera)}s hasta la hora de publicación")
-            time.sleep(espera)
-        media = ig("POST", f"{uid}/media_publish", ig_token, data={"creation_id": cont})["id"]
-        link = ig("GET", media, ig_token, params={"fields": "permalink"}).get("permalink", "")
-        avisar(link_ig=link, pub_estado="publicada", pub_progreso=100,
-               pub_detalle=f"Publicada el {datetime.now(UY):%d/%m %H:%M}. El Short sale en YouTube a las {publicar_yt.astimezone(UY):%H:%M}.{aviso_collabs}")
-        log("Instagram OK: publicado")
-    finally:
-        subprocess.run(["gh", "release", "delete", tag, "--repo", REPO, "--yes", "--cleanup-tag"], capture_output=True)
-        log("Adjunto temporal borrado")
+            url = f"https://github.com/{REPO}/releases/download/{tag}/vertical.mp4"
+            uid = ig("GET", "me", ig_token, params={"fields": "user_id"})["user_id"]
+            datos_reel = {"media_type": "REELS", "video_url": url, "caption": nota["copy_ig"], "share_to_feed": "true"}
+            collabs = [u.lstrip("@") for u in re.split(r"[,\s]+", nota.get("colaboradores") or "") if u.strip("@")][:3]
+            sin_invitar = []
+            try:
+                cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(collabs)} if collabs else {})})["id"]
+            except RuntimeError as e:
+                if not collabs or "not visible" not in str(e).lower():
+                    raise
+                # Algún collab es privado o no existe: se publica con los que sí se pueden invitar
+                validos = []
+                for u in collabs:
+                    try:
+                        ig("POST", f"{uid}/media", ig_token, data={**datos_reel, "collaborators": json.dumps([u])})
+                        validos.append(u)
+                    except RuntimeError:
+                        sin_invitar.append(u)
+                cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(validos)} if validos else {})})["id"]
+                log(f"{len(sin_invitar)} collab(s) no se pudieron invitar (cuenta privada o usuario inexistente)")
+            avisar(pub_progreso=65, pub_detalle="Instagram está procesando el video…")
+            aviso_collabs = f" No se pudo invitar como collab a: {', '.join('@' + u for u in sin_invitar)} (cuenta privada o usuario mal escrito)." if sin_invitar else ""
+            for _ in range(90):
+                st = ig("GET", cont, ig_token, params={"fields": "status_code,status"})
+                if st["status_code"] in ("FINISHED", "ERROR", "EXPIRED"):
+                    break
+                time.sleep(10)
+            if st["status_code"] != "FINISHED":
+                raise RuntimeError(f"Instagram no pudo procesar el video: {st.get('status')}")
+            log("Instagram procesó el video")
+            if ENSAYO:
+                log("Ensayo: no se publica en Instagram")
+                avisar(pub_progreso=100, pub_detalle=f"Ensayo OK {datetime.now(UY):%d/%m %H:%M}: Drive, YouTube e Instagram respondieron bien. No se publicó nada.{aviso_collabs}")
+                return
+            espera = (CUANDO - datetime.now(timezone.utc)).total_seconds()
+            avisar(pub_progreso=85, pub_detalle="Instagram procesó el video. Publicando…" if espera <= 0
+                   else f"Todo listo. Sale a las {CUANDO.astimezone(UY):%H:%M}…")
+            if espera > 0:
+                log(f"Esperando {int(espera)}s hasta la hora de publicación")
+                time.sleep(espera)
+            media = ig("POST", f"{uid}/media_publish", ig_token, data={"creation_id": cont})["id"]
+            link = ig("GET", media, ig_token, params={"fields": "permalink"}).get("permalink", "")
+            avisar(link_ig=link, pub_estado="publicada", pub_progreso=100,
+                   pub_detalle=f"Publicada el {datetime.now(UY):%d/%m %H:%M}." + (f" El Short sale en YouTube a las {publicar_yt.astimezone(UY):%H:%M}." if PUB_YT else "") + aviso_collabs)
+            log("Instagram OK: publicado")
+        finally:
+            subprocess.run(["gh", "release", "delete", tag, "--repo", REPO, "--yes", "--cleanup-tag"], capture_output=True)
+            log("Adjunto temporal borrado")
+    else:
+        log("Instagram: no se publica (destildado)")
+        hecho = f"Ensayo OK {datetime.now(UY):%d/%m %H:%M}: el video y YouTube respondieron bien. No se publicó nada." if ENSAYO             else f"Short {'publicado' if publicar_yt <= datetime.now(timezone.utc) + timedelta(minutes=6) else 'programado'} en YouTube para las {publicar_yt.astimezone(UY):%H:%M} del {publicar_yt.astimezone(UY):%d/%m}."
+        avisar(pub_progreso=100, pub_detalle=hecho, **({} if ENSAYO else {"pub_estado": "publicada"}),
+               **({"link_ig": nota["link_vertical"]} if origen_ig and not nota.get("link_ig") and not ENSAYO else {}))
+        return
 
     # 4. Renovar el token de IG si tiene más de 30 días (vence a los 60)
     act = datos.get("ig_token_actualizado")
