@@ -573,7 +573,7 @@ function abrirNota(id, paso) {
     <h3>${n ? esc(n.titulo) : 'Nueva nota'}</h3>
     ${barraPasos(n, actual)}
     ${seccion(1, 'Grabación', 'quien graba', `
-      <label class="f"><span>Rótulo (título breve)</span><input id="n-titulo" required value="${esc(n?.titulo)}" placeholder="Ej: Mural Marino · Punta Ballena"></label>
+      <label class="f"><span>Rótulo: qué y dónde, como alguien lo buscaría (con esto se arma el título de YouTube)</span><input id="n-titulo" required value="${esc(n?.titulo)}" placeholder="Ej: Test epigenético en Centro Eona · Mural marino de La Pastora"></label>
       <label class="f"><span>Entrevistados (nombre y @ de IG, uno por línea)</span><textarea id="n-entrevistados" placeholder="Paula Rodríguez @paulirodriguez.psi">${esc(n?.entrevistados)}</textarea></label>
       <label class="f"><span>Link del crudo (Google Drive)</span><input id="n-crudo" type="url" value="${esc(n?.link_crudo)}" placeholder="https://drive.google.com/…"></label>
       <label class="f"><span>Quién grabó</span>${sel('n-grabo', n ? n.grabo : S.yo.nombre)}</label>`)}
@@ -632,12 +632,19 @@ const SUFIJO_SHORT = ' | Aire de Mar #Shorts';
 const CTA = '▶️ Mirá la nota completa en nuestro canal de YouTube.';  // estándar desde 2026-10-14 (versión de Floppy)
 const sinEmojis = (s) => s.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, '').replace(/\s{2,}/g, ' ').trim();
 const SOLO_IG = /nota completa|canal de youtube|\breel\b|link en (la )?bio/i;
-function youtubeDesdeCopy(copy, linkCompleta) {
+/* Título del Short: qué y dónde (el rótulo) + quién habla (el primer entrevistado). Así se encuentra en YouTube.
+   Si no hay rótulo, cae en la primera frase del copy. */
+function tituloShort(rotulo, entrevistados, copy) {
+  const persona = sinEmojis(((entrevistados || '').split('\n')[0] || '').replace(/\s*[(@].*$/, '')).trim();
+  const que = sinEmojis((rotulo || '').replace(/\s*·\s*/g, ' · ')).trim()
+    || (sinEmojis((copy || '').split('\n').find(l => sinEmojis(l)) || '').match(/^.+?[.!?](?=\s|$)/) || [''])[0];
+  const base = [que, persona && !que.toLowerCase().includes(persona.toLowerCase()) ? persona : ''].filter(Boolean).join(' | ');
+  const max = 100 - ' #Shorts'.length;
+  return (base.length > max ? base.slice(0, max - 1).replace(/\s+\S*$/, '') + '…' : base) + ' #Shorts';
+}
+function youtubeDesdeCopy(copy, linkCompleta, rotulo, entrevistados) {
   const lineas = copy.split('\n');
-  const primera = sinEmojis(lineas.find(l => sinEmojis(l)) || '');
-  const frase = (primera.match(/^.+?[.!?](?=\s|$)/) || [primera])[0];
-  const max = 100 - SUFIJO_SHORT.length;
-  const titulo = (frase.length > max ? frase.slice(0, max - 1).replace(/\s+\S*$/, '') + '…' : frase) + SUFIJO_SHORT;
+  const titulo = tituloShort(rotulo, entrevistados, copy);
   const cuerpo = lineas.filter(l => !SOLO_IG.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   const hashtags = cuerpo.match(/^(#\S+\s*)+$/m);
   const sinTags = hashtags ? cuerpo.replace(hashtags[0], '').trim() : cuerpo;
@@ -682,7 +689,7 @@ $('#f-nota').addEventListener('click', async (ev) => {
   if (t.id === 'n-desde-copy') {
     const copy = $('#n-copy').value.trim();
     if (!copy) { toast('Primero escribí el copy de IG.'); return; }
-    const { titulo, descripcion } = youtubeDesdeCopy(copy, $('#n-link-ytc').value.trim());
+    const { titulo, descripcion } = youtubeDesdeCopy(copy, $('#n-link-ytc').value.trim(), $('#n-titulo').value, $('#n-entrevistados').value);
     $('#n-yt-titulo').value = titulo; $('#n-yt-desc').value = descripcion;
     toast('Título y descripción listos. Revisalos y guardá.');
   }
@@ -797,7 +804,12 @@ async function accionPub(t) {
     if (!/drive\.google\.com|instagram\.com\/(reel|p)\//.test(body.link_vertical)) { toast('El link vertical tiene que ser de Google Drive o de un Reel de Instagram.'); return; }
     if (body.pub_ig && /instagram\.com/.test(body.link_vertical)) { toast('Ese Reel ya está en Instagram: destildá Instagram para subir solo el Short.'); return; }
     if (body.pub_ig && !body.copy_ig) { toast('Para Instagram falta el copy.'); return; }
-    if (body.pub_yt && !body.yt_titulo) { toast('Para YouTube falta el título (podés usar "Completar YouTube desde el copy").'); return; }
+    if (body.pub_yt && !body.yt_titulo) {
+      // Sin título: se arma solo (rótulo + quién habla) y la descripción desde el copy
+      const auto = youtubeDesdeCopy(body.copy_ig || '', body.link_yt_completa, body.titulo, body.entrevistados);
+      body.yt_titulo = auto.titulo; $('#n-yt-titulo').value = auto.titulo;
+      if (!body.yt_descripcion && body.copy_ig) { body.yt_descripcion = auto.descripcion; $('#n-yt-desc').value = auto.descripcion; }
+    }
     if (t.id === 'n-publicar-ahora') {
       const donde = [body.pub_ig && 'el Reel en Instagram', body.pub_yt && 'el Short en YouTube'].filter(Boolean).join(' y ');
       $('#n-pub-zona').innerHTML = `<span class="nota">¿Publicar ya ${esc(donde)}?</span><button type="button" class="btn" id="n-publicar-si">Sí, publicar</button><button type="button" class="btn quiet" id="n-publicar-no">No</button>`;
