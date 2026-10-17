@@ -523,12 +523,16 @@ function abrirNota(id) {
       <label class="f"><span>Link nota completa</span><input id="n-completa" type="url" value="${esc(n?.link_completa)}" placeholder="https://drive.google.com/…"></label>`)}
     ${seccion(3, 'Edición vertical', 'recorte: Reel y Short', `
       <label class="f"><span>Quién edita</span>${sel('n-editor-v', n ? n.editor_vertical : EDITOR_VERTICAL)}</label>
-      <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/…"></label>`)}
+      <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB · Drive o el link del Reel si ya se publicó a mano</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/… o https://www.instagram.com/reel/…"></label>`)}
     ${seccion(4, 'Coordinación', 'coordinador', `
       <div class="campos">
         <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
         <label class="f"><span>Bloque del programa</span><select id="n-bloque"><option value="">—</option>${[1, 2, 3].map(b => `<option value="${b}" ${n?.bloque === b ? 'selected' : ''}>B${b} · recap el ${['', 'martes', 'jueves', 'sábado'][b]}</option>`).join('')}</select></label>
       </div>
+      <div class="f"><span>Publicar en</span><div class="checks">
+        <label><input type="checkbox" id="n-pub-ig" ${(n ? n.pub_ig && !n.link_ig : true) ? 'checked' : ''}> Instagram (Reel)</label>
+        <label><input type="checkbox" id="n-pub-yt" ${(n ? n.pub_yt && !n.link_yt_short : true) ? 'checked' : ''}> YouTube (Short)</label>
+        ${n?.link_ig ? '<span class="nota">El Reel ya está publicado: Instagram queda destildado.</span>' : ''}</div></div>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
       <label class="f"><span>Collabs de IG (hasta 3 usuarios, sin @; tienen que ser cuentas públicas y aceptar la invitación)</span><input id="n-collabs" value="${esc(n?.colaboradores)}" placeholder="afavordelmar_, ipereyrarivero" autocapitalize="none" spellcheck="false"></label>
       <div><button type="button" class="btn quiet small" id="n-desde-copy">Completar YouTube desde el copy</button></div>
@@ -610,6 +614,7 @@ function leerFormNota() {
     colaboradores: val('#n-collabs').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
+    pub_ig: $('#n-pub-ig').checked, pub_yt: $('#n-pub-yt').checked,
     yt_relacionado: $('#n-relacionado').checked,
   };
 }
@@ -689,8 +694,12 @@ async function accionPub(t) {
     toast(error ? 'No se pudo cancelar: ' + error.message : 'Programación cancelada.');
   } else {
     if (err) { toast(err); return; }
-    if (!body.link_vertical || !body.copy_ig || !body.yt_titulo) { toast('Para publicar hacen falta el link vertical, el copy de IG y el título de YouTube.'); return; }
-    if (!/drive\.google\.com/.test(body.link_vertical)) { toast('El link vertical tiene que ser de Google Drive.'); return; }
+    if (!body.pub_ig && !body.pub_yt) { toast('Elegí dónde publicar: Instagram, YouTube o los dos.'); return; }
+    if (!body.link_vertical) { toast('Falta el link del vertical (Drive o el Reel de Instagram).'); return; }
+    if (!/drive\.google\.com|instagram\.com\/(reel|p)\//.test(body.link_vertical)) { toast('El link vertical tiene que ser de Google Drive o de un Reel de Instagram.'); return; }
+    if (body.pub_ig && /instagram\.com/.test(body.link_vertical)) { toast('Ese Reel ya está en Instagram: destildá Instagram para subir solo el Short.'); return; }
+    if (body.pub_ig && !body.copy_ig) { toast('Para Instagram falta el copy.'); return; }
+    if (body.pub_yt && !body.yt_titulo) { toast('Para YouTube falta el título (podés usar "Completar YouTube desde el copy").'); return; }
     if (t.id === 'n-publicar-ahora') {
       $('#n-pub-zona').innerHTML = '<span class="nota">¿Publicar ya en Instagram y YouTube?</span><button type="button" class="btn" id="n-publicar-si">Sí, publicar</button><button type="button" class="btn quiet" id="n-publicar-no">No</button>';
       return;
