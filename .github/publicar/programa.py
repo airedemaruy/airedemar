@@ -34,6 +34,7 @@ SECRETO = os.environ["PUB_SECRETO"]
 LISTA = "PLBpp16n7GHdg"  # "Aire de Mar · Temporada 2026"
 APP = "https://airedemaruy.github.io/airedemar/equipo/#programas"
 FLOPPY = "florsagasti@gmail.com"
+JUANDI = "juandiegosagasti@gmail.com"   # en copia del mail del sábado y destinatario si falla
 UY = timezone(timedelta(hours=-3))
 CARPETA = "application/vnd.google-apps.folder"
 PIE = "Domingos 17:30 por Canal Once Punta del Este. Desde las 19:00, en YouTube."
@@ -158,6 +159,25 @@ def con_capitulos(desc, caps):
 
 
 # ---------- mail ----------
+def mail_error(error):
+    """Si la corrida del sábado falla, le avisa a Juandi por mail (si no, nadie se entera hasta el domingo)."""
+    if MODO != "sabado" or not os.environ.get("GMAIL_TOKEN"): return
+    gmail = build("gmail", "v1", credentials=Credentials.from_authorized_user_info(json.loads(os.environ["GMAIL_TOKEN"])))
+    msg = MIMEText(f"""Hola Juandi!
+
+Falló la subida automática del programa a YouTube (sábado 14:00).
+
+Programa: {PROG_ID}
+Error: {error[:500]}
+
+Detalle en la tarjeta del programa en la app: {APP}
+
+Aire de Mar""", "plain", "utf-8")
+    msg["To"] = JUANDI
+    msg["Subject"] = f"Aire de Mar: falló la subida a YouTube ({PROG_ID})"
+    gmail.users().messages().send(userId="me", body={"raw": base64.urlsafe_b64encode(msg.as_bytes()).decode()}).execute()
+
+
 def mail_floppy(gmail, p, agenda):
     cuerpo = f"""Hola Flor!
 
@@ -173,6 +193,7 @@ Los capítulos se agregan solos. Si no llegás, salen con títulos provisorios y
 Aire de Mar"""
     msg = MIMEText(cuerpo, "plain", "utf-8")
     msg["To"] = FLOPPY
+    msg["Cc"] = JUANDI
     msg["Subject"] = f"Aire de Mar #{p['numero']}: títulos y descripciones para YouTube"
     gmail.users().messages().send(userId="me", body={"raw": base64.urlsafe_b64encode(msg.as_bytes()).decode()}).execute()
 
@@ -363,5 +384,6 @@ if __name__ == "__main__":
         log("Falló la publicación del programa")
         try:
             avisar(pub_estado="error", pub_progreso=-1, pub_detalle=f"Error: {str(e)[:300]}")
+            mail_error(str(e))
         finally:
             sys.exit(1)
