@@ -159,7 +159,7 @@ def main():
             uid = ig("GET", "me", ig_token, params={"fields": "user_id"})["user_id"]
             datos_reel = {"media_type": "REELS", "video_url": url, "caption": nota["copy_ig"], "share_to_feed": "true"}
             collabs = [u.lstrip("@") for u in re.split(r"[,\s]+", nota.get("colaboradores") or "") if u.strip("@")][:3]
-            sin_invitar = []
+            sin_invitar = []; etiquetados = False
             try:
                 cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(collabs)} if collabs else {})})["id"]
             except RuntimeError as e:
@@ -173,10 +173,17 @@ def main():
                         validos.append(u)
                     except RuntimeError:
                         sin_invitar.append(u)
-                cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(validos)} if validos else {})})["id"]
-                log(f"{len(sin_invitar)} collab(s) no se pudieron invitar (cuenta privada o usuario inexistente)")
+                con_validos = {**datos_reel, **({"collaborators": json.dumps(validos)} if validos else {})}
+                etiquetados = False
+                try:   # a los que no se pueden invitar como collab, al menos se los etiqueta (Juandi, 2026-10-31)
+                    cont = ig("POST", f"{uid}/media", ig_token, data={**con_validos, "user_tags": json.dumps([{"username": u} for u in sin_invitar])})["id"]
+                    etiquetados = True
+                except RuntimeError:
+                    cont = ig("POST", f"{uid}/media", ig_token, data=con_validos)["id"]
+                log(f"{len(sin_invitar)} collab(s) no se pudieron invitar" + (" (quedaron etiquetados)" if etiquetados else ""))
             avisar(pub_progreso=65, pub_detalle="Instagram está procesando el video…")
-            aviso_collabs = f" No se pudo invitar como collab a: {', '.join('@' + u for u in sin_invitar)} (cuenta privada o usuario mal escrito)." if sin_invitar else ""
+            aviso_collabs = (f" No se pudo invitar como collab a: {', '.join('@' + u for u in sin_invitar)}"
+                             + (" (quedaron etiquetados en el Reel)." if etiquetados else " (tampoco se pudieron etiquetar: hacelo a mano desde el Reel).")) if sin_invitar else ""
             for _ in range(90):
                 st = ig("GET", cont, ig_token, params={"fields": "status_code,status"})
                 if st["status_code"] in ("FINISHED", "ERROR", "EXPIRED"):
