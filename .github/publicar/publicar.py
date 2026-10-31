@@ -163,7 +163,7 @@ def main():
             try:
                 cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(collabs)} if collabs else {})})["id"]
             except RuntimeError as e:
-                if not collabs or "not visible" not in str(e).lower():
+                if not collabs or not any(x in str(e).lower() for x in ("not visible", "invalid user")):   # collab privado, inexistente o que no admite invitaciones
                     raise
                 # Algún collab es privado o no existe: se publica con los que sí se pueden invitar
                 validos = []
