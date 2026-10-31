@@ -178,17 +178,29 @@ Aire de Mar""", "plain", "utf-8")
     gmail.users().messages().send(userId="me", body={"raw": base64.urlsafe_b64encode(msg.as_bytes()).decode()}).execute()
 
 
-def mail_floppy(gmail, p, agenda):
+def mail_floppy(gmail, p, agenda, videos, cuando):
+    """Mail del sábado a Floppy (Juandi en copia): cómo va a salir cada video, con título, día y descripción, para revisarlo."""
+    filas = []
+    for vid, titulo, desc, clave in videos:
+        t = cuando[clave].astimezone(UY)
+        nombre = "PROGRAMA COMPLETO" if clave == "completo" else f"BLOQUE {clave}"
+        resumen = " ".join((desc or "").split("Capítulos:")[0].split())
+        filas.append(f"""▶ {nombre} — {["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][t.weekday()]} {t:%d/%m} a las {t:%H:%M}
+   Título: {titulo}
+   Descripción: {(resumen[:300] + "…") if len(resumen) > 300 else (resumen or "(vacía: sale solo con el horario del programa)")}
+   https://youtu.be/{vid}""")
+    detalle = (chr(10) * 2).join(filas)
     cuerpo = f"""Hola Flor!
 
-Ya están en YouTube el programa completo y los 3 bloques del #{p['numero']} ({p['invitado'] or 'sin invitado cargado'}), programados así:
-{agenda}
+Ya están en YouTube (privados) el programa completo y los 3 bloques del #{p['numero']} ({p['invitado'] or 'sin invitado cargado'}). Así van a salir:
 
-Cargá los títulos y las descripciones en la app antes del domingo a las 18:30:
+{detalle}
+
+Si algo no está bien, corregilo en la app antes del domingo a las 18:30 (a esa hora se pasan solos a YouTube):
 {APP}
 (abrí la tarjeta del #{p['numero']}, sección YouTube)
 
-Los capítulos se agregan solos. Si no llegás, salen con títulos provisorios y se corrigen después.
+Los capítulos se agregan solos desde los subtítulos.
 
 Aire de Mar"""
     msg = MIMEText(cuerpo, "plain", "utf-8")
@@ -361,7 +373,7 @@ def main():
     # 5. Aviso a Floppy (solo la revisión del sábado)
     if MODO == "sabado":
         gmail = build("gmail", "v1", credentials=Credentials.from_authorized_user_info(json.loads(os.environ["GMAIL_TOKEN"])))
-        mail_floppy(gmail, p, agenda)
+        mail_floppy(gmail, p, agenda, videos, cuando)
         log("Mail a Floppy enviado")
 
     ya = max(cuando.values()) <= datetime.now(timezone.utc) + timedelta(minutes=6)
