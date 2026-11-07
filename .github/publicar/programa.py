@@ -242,7 +242,7 @@ def main():
     if not all(ids.values()) or not id_comp:
         avisar(pub_progreso=10, pub_detalle="Buscando los bloques en la carpeta CANAL ONCE…")
         drive = build("drive", "v3", credentials=creds)
-        del_prog = re.compile(rf"(?:\bp\s*|#\s*){n}\b", re.I)   # la carpeta puede decir "P34" o "#34"
+        del_prog = re.compile(rf"(?:\bp\s*|#\s*|\badm\s*){n}\b", re.I)   # la carpeta puede decir "P34", "#34" o "ADM 34"
         canal = [f for f in drive.files().list(q=f"mimeType='{CARPETA}' and name contains 'once' and trashed=false",
                                               fields="files(id,name)", pageSize=100).execute()["files"]
                  if del_prog.search(f["name"]) and re.search(r"canal\s*once", f["name"], re.I)]
