@@ -174,6 +174,12 @@ def main():
             if tiene_portada:
                 datos_reel["cover_url"] = f"https://github.com/{REPO}/releases/download/{tag}/portada.jpg"
             collabs = [u.lstrip("@") for u in re.split(r"[,\s]+", nota.get("colaboradores") or "") if u.strip("@")][:3]
+            if nota.get("reel_prueba"):
+                # Reel de prueba: primero lo ven quienes no siguen la cuenta; se comparte con los seguidores a mano desde la app.
+                # Instagram no admite collabs en los Reels de prueba (Juandi, 2026-11-10).
+                datos_reel["trial_params"] = json.dumps({"graduation_strategy": "MANUAL"})
+                collabs = []
+                log("Reel de prueba (sin collabs)")
             sin_invitar = []; etiquetados = False
             try:
                 cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(collabs)} if collabs else {})})["id"]
