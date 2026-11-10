@@ -592,6 +592,7 @@ function abrirNota(id, paso) {
       <div class="f"><span>Publicar en</span><div class="checks">
         <label><input type="checkbox" id="n-pub-ig" ${(n ? n.pub_ig && !n.link_ig : true) ? 'checked' : ''}> Instagram (Reel)</label>
         <label><input type="checkbox" id="n-pub-yt" ${(n ? n.pub_yt && !n.link_yt_short : true) ? 'checked' : ''}> YouTube (Short)</label>
+        <label title="Primero lo ve gente que no sigue la cuenta. Se comparte con los seguidores a mano desde la app de IG. No admite collabs."><input type="checkbox" id="n-prueba" ${n?.reel_prueba ? 'checked' : ''}> Reel de prueba (sin collabs; después se comparte con los seguidores desde IG)</label>
         ${n?.link_ig ? '<span class="nota">El Reel ya está publicado: Instagram queda destildado.</span>' : ''}</div></div>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
       <label class="f"><span>Collabs de IG (hasta 3 usuarios, sin @; tienen que ser cuentas públicas y aceptar la invitación)</span><input id="n-collabs" value="${esc(n?.colaboradores)}" placeholder="afavordelmar_, ipereyrarivero" autocapitalize="none" spellcheck="false"></label>
@@ -707,7 +708,7 @@ function leerFormNota() {
     colaboradores: val('#n-collabs').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
-    pub_ig: $('#n-pub-ig').checked, pub_yt: $('#n-pub-yt').checked,
+    pub_ig: $('#n-pub-ig').checked, pub_yt: $('#n-pub-yt').checked, reel_prueba: $('#n-prueba').checked,
     yt_relacionado: $('#n-relacionado').checked,
   };
 }
