@@ -582,7 +582,8 @@ function abrirNota(id, paso) {
       <label class="f"><span>Link nota completa</span><input id="n-completa" type="url" value="${esc(n?.link_completa)}" placeholder="https://drive.google.com/…"></label>`)}
     ${seccion(3, 'Edición vertical', 'recorte: Reel y Short', `
       <label class="f"><span>Quién edita</span>${sel('n-editor-v', n ? n.editor_vertical : EDITOR_VERTICAL)}</label>
-      <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB · Drive o el link del Reel si ya se publicó a mano</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/… o https://www.instagram.com/reel/…"></label>`)}
+      <label class="f"><span>Link recorte vertical · exportar en 1080×1920, menos de 300 MB · Drive o el link del Reel si ya se publicó a mano</span><input id="n-vertical" type="url" value="${esc(n?.link_vertical)}" placeholder="https://drive.google.com/… o https://www.instagram.com/reel/…"></label>
+      <label class="f"><span>Portada del Reel (opcional) · imagen 1080×1920 en Drive · es lo que se ve en el perfil</span><input id="n-portada" type="url" value="${esc(n?.link_portada)}" placeholder="https://drive.google.com/…"></label>`)}
     ${seccion(4, 'Textos', 'coordinación', `
       <div class="campos">
         <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
@@ -701,7 +702,7 @@ function leerFormNota() {
   const val = (id) => $(id).value.trim();
   return {
     titulo: val('#n-titulo'), entrevistados: val('#n-entrevistados'), link_crudo: val('#n-crudo'), grabo: $('#n-grabo').value,
-    editor: $('#n-editor').value, link_completa: val('#n-completa'), editor_vertical: $('#n-editor-v').value, link_vertical: val('#n-vertical'),
+    editor: $('#n-editor').value, link_completa: val('#n-completa'), editor_vertical: $('#n-editor-v').value, link_vertical: val('#n-vertical'), link_portada: val('#n-portada'),
     programa_id: $('#n-programa').value || null, bloque: Number($('#n-bloque').value) || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
     colaboradores: val('#n-collabs').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),

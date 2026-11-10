@@ -31,6 +31,7 @@ SECRETO = os.environ["PUB_SECRETO"]
 REPO = os.environ["GITHUB_REPOSITORY"]
 IG_API = "https://graph.instagram.com/v23.0"
 VIDEO = "/tmp/vertical.mp4"
+PORTADA = "/tmp/portada.jpg"
 UY = timezone(timedelta(hours=-3))  # Uruguay, sin horario de verano
 
 
@@ -71,7 +72,7 @@ def ig(metodo, ruta, token, **kw):
 def id_drive(link):
     m = re.search(r"/d/([\w-]{20,})", link) or re.search(r"[?&]id=([\w-]{20,})", link)
     if not m:
-        raise RuntimeError("El link vertical no es un link de Google Drive")
+        raise RuntimeError("El link (vertical o portada) no es un link de Google Drive")
     return m.group(1)
 
 
@@ -120,6 +121,18 @@ def main():
                 _, listo = bajada.next_chunk()
         log(f"Video bajado de Drive ({int(meta['size']) // 2**20} MB)")
 
+    # 1b. Portada del Reel (opcional): imagen en Drive que IG usa como cover_url (lo que se ve en el perfil)
+    tiene_portada = False
+    if PUB_IG and (nota.get("link_portada") or "").strip():
+        drive = build("drive", "v3", credentials=creds)
+        with open(PORTADA, "wb") as f:
+            bajada = MediaIoBaseDownload(f, drive.files().get_media(fileId=id_drive(nota["link_portada"]), supportsAllDrives=True))
+            listo = False
+            while not listo:
+                _, listo = bajada.next_chunk()
+        tiene_portada = True
+        log("Portada bajada de Drive")
+
     # 2. YouTube: privado + publishAt (o privado y se borra, si es ensayo)
     publicar_yt = max(CUANDO, datetime.now(timezone.utc) + timedelta(minutes=3))
     if PUB_YT:
@@ -151,13 +164,15 @@ def main():
     # 3. Instagram: adjunto temporal en una release + Reel con video_url
     if PUB_IG:
         tag = f"tmp-pub-{NOTA_ID[:8]}-{os.environ.get('GITHUB_RUN_ID', int(time.time()))}"
-        subprocess.run(["gh", "release", "create", tag, VIDEO, "--repo", REPO, "--prerelease",
+        subprocess.run(["gh", "release", "create", tag, VIDEO, *([PORTADA] if tiene_portada else []), "--repo", REPO, "--prerelease",
                         "--title", "Temporal (se borra solo)", "--notes", "Archivo temporal para publicar en Instagram."],
                        check=True, capture_output=True)
         try:
             url = f"https://github.com/{REPO}/releases/download/{tag}/vertical.mp4"
             uid = ig("GET", "me", ig_token, params={"fields": "user_id"})["user_id"]
             datos_reel = {"media_type": "REELS", "video_url": url, "caption": nota["copy_ig"], "share_to_feed": "true"}
+            if tiene_portada:
+                datos_reel["cover_url"] = f"https://github.com/{REPO}/releases/download/{tag}/portada.jpg"
             collabs = [u.lstrip("@") for u in re.split(r"[,\s]+", nota.get("colaboradores") or "") if u.strip("@")][:3]
             sin_invitar = []; etiquetados = False
             try:
