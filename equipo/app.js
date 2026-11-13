@@ -281,7 +281,7 @@ function abrirPrograma(id) {
     ${seccion(2, 'Bloques finales', 'se completan solos el sábado 14:00 desde CANAL ONCE', BLOQUES.map(b => `
       <label class="f"><span>Bloque ${b}</span><input id="p-link-b${b}" type="url" value="${esc(p?.[`link_b${b}`])}" placeholder="https://drive.google.com/…"></label>`).join(''))}
     ${seccion(3, 'YouTube', 'títulos y descripciones antes del domingo 18:30', `
-      <div class="nota">El sábado 14:00 se suben solos el completo y los 3 bloques y le llega un mail a Floppy. Salen a las 19:00: <b>completo el domingo, B1 el lunes, B2 el miércoles y B3 el viernes</b> (los recaps de cada bloque, martes, jueves y sábado, desde Informes). El domingo 18:30 se aplica lo que esté cargado acá. Si un título queda vacío, sale uno provisorio.</div>
+      <div class="nota">El sábado 14:00 se suben solos el completo y los 3 bloques y le llega un mail a Floppy. Salen a las 19:00: <b>completo el domingo, B1 el lunes, B2 el miércoles y B3 el jueves</b> (los recaps, desde Informes: ping pong del B1 el lunes, B2 el viernes y B3 el sábado; el martes queda para un rescate). El domingo 18:30 se aplica lo que esté cargado acá. Si un título queda vacío, sale uno provisorio.</div>
       ${texto('completo', 'Programa completo · título', `Aire de Mar 2026 #${n} - Programa completo | ${inv}`)}
       ${texto('b1', 'Bloque 1 · título', `Aire de Mar 2026 #${n} B1 - ${inv} - tema de la nota`)}
       ${texto('b2', 'Bloque 2 · título', `Aire de Mar 2026 #${n} B2 - ${inv} (Entrevista)`)}
@@ -363,9 +363,10 @@ const EDITOR_VERTICAL = 'Juandi';
 const HINTS_NOTA = ['Falta el link del crudo', `${EDITOR_HORIZONTAL} arma la nota completa`, `${EDITOR_VERTICAL} hace el recorte vertical`, 'El coordinador completa textos, aprueba y pone fecha', 'Lista para salir en la fecha', ''];
 const HORA_PUBLICAR = '19:00';
 /* Semana de un programa (días después del domingo de emisión): en YouTube el completo, B1, B2, B3;
-   el recap de cada bloque (Reel + Short) sale al día siguiente de su bloque. */
-const DIA_YT = { completo: 0, 1: 1, 2: 3, 3: 5 };
-const DIA_RECAP = { 1: 2, 2: 4, 3: 6 };
+   recaps (Reel + Short): el del B1 (ping pong) el mismo lunes, el del B2 el viernes y el del B3 el sábado,
+   para que el invitado no salga dos días seguidos en IG. El martes queda para un rescate. */
+const DIA_YT = { completo: 0, 1: 1, 2: 3, 3: 4 };
+const DIA_RECAP = { 1: 1, 2: 5, 3: 6 };
 function diaMas(fecha, dias) { const d = parse(fecha); d.setDate(d.getDate() + dias); return iso(d); }
 const programa = (id) => S.programas.find(p => p.id === id);
 const nombrePrograma = (p) => p ? `ADM #${p.numero ?? '?'}${p.fecha ? ' · ' + fechaCorta(p.fecha) : ''}${p.invitado ? ' · ' + p.invitado : ''}` : '';
@@ -587,7 +588,7 @@ function abrirNota(id, paso) {
     ${seccion(4, 'Textos', 'coordinación', `
       <div class="campos">
         <label class="f"><span>Programa en el que sale</span><select id="n-programa"><option value="">—</option>${progs.map(p => `<option value="${esc(p.id)}" ${p.id === n?.programa_id ? 'selected' : ''}>${esc(nombrePrograma(p))}</option>`).join('')}</select></label>
-        <label class="f"><span>Bloque del programa</span><select id="n-bloque"><option value="">—</option>${[1, 2, 3].map(b => `<option value="${b}" ${n?.bloque === b ? 'selected' : ''}>B${b} · recap el ${['', 'martes', 'jueves', 'sábado'][b]}</option>`).join('')}</select></label>
+        <label class="f"><span>Bloque del programa</span><select id="n-bloque"><option value="">—</option>${[1, 2, 3].map(b => `<option value="${b}" ${n?.bloque === b ? 'selected' : ''}>B${b} · recap el ${['', 'lunes', 'viernes', 'sábado'][b]}</option>`).join('')}</select></label>
       </div>
       <div class="f"><span>Publicar en</span><div class="checks">
         <label><input type="checkbox" id="n-pub-ig" ${(n ? n.pub_ig && !n.link_ig : true) ? 'checked' : ''}> Instagram (Reel)</label>
@@ -657,13 +658,13 @@ function youtubeDesdeCopy(copy, linkCompleta, rotulo, entrevistados) {
 
 function contarCopy() { const c = $('#n-copy'), s = $('#n-copy-cuenta'); if (c && s) { s.textContent = `(${c.value.length} de 2200)`; s.style.color = c.value.length > 2200 ? 'var(--bad, #c23b2a)' : ''; } }
 $('#f-nota').addEventListener('input', (ev) => { if (ev.target.id === 'n-copy') contarCopy(); });
-// Al elegir programa y bloque, propone el día del recap (el día siguiente al bloque en YouTube) si todavía no hay fecha
+// Al elegir programa y bloque, propone el día del recap (DIA_RECAP) si todavía no hay fecha
 $('#f-nota').addEventListener('change', (ev) => {
   if (!['n-programa', 'n-bloque'].includes(ev.target.id)) return;
   const p = programa($('#n-programa').value), b = Number($('#n-bloque').value);
   if (!p?.fecha || !b || $('#n-dia').value) return;
   $('#n-dia').value = diaMas(p.fecha, DIA_RECAP[b]); $('#n-hora').value = HORA_PUBLICAR;
-  toast(`Propuesto: recap el ${fechaCorta($('#n-dia').value)} a las ${HORA_PUBLICAR}, el día después del B${b} en YouTube.`);
+  toast(`Propuesto: recap del B${b} el ${fechaCorta($('#n-dia').value)} a las ${HORA_PUBLICAR}.`);
 });
 
 $('#f-nota').addEventListener('click', async (ev) => {

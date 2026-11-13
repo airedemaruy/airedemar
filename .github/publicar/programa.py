@@ -6,8 +6,8 @@ Corre en GitHub Actions (workflow programa.yml). Modos:
 - aplicar: (domingo 18:30, o botón de la app) aplica títulos y descripciones de la tarjeta y suma capítulos
   automáticos (sacados de los subtítulos de YouTube) a las descripciones que no los tengan.
 - ahora: (botón de la app) hace todo y publica ya.
-Semana (19:00): completo el domingo, B1 el lunes, B2 el miércoles, B3 el viernes; los recaps de cada bloque
-(Reel + Short, desde Informes) salen martes, jueves y sábado. Así cada pieza sale después de la que tiene como
+Semana (19:00): completo el domingo, B1 el lunes, B2 el miércoles, B3 el jueves; los recaps (Reel + Short, desde
+Informes) salen: B1 (ping pong) el lunes, B2 el viernes, B3 el sábado. El martes queda para un rescate. Así cada pieza sale después de la que tiene como
 video relacionado: bloques → completo, Shorts → su bloque. Los videos quedan privados con publicación programada (la app no está
 auditada por Google, así que no se puede pasar a público directo).
 Repo público: no imprimir tokens, links ni IDs de Drive.
@@ -320,11 +320,11 @@ def main():
     descs["completo"] = desc_comp or PIE
 
     # 3. Títulos, descripciones y publicación programada.
-    #    Semana: completo el domingo, B1 el lunes, B2 el miércoles y B3 el viernes (los recaps de cada bloque salen
-    #    martes, jueves y sábado desde Informes). "ahora": todo ya, completo primero y un minuto entre cada uno.
+    #    Semana: completo el domingo, B1 el lunes, B2 el miércoles y B3 el jueves (los recaps salen
+    #    lunes, viernes y sábado desde Informes). "ahora": todo ya, completo primero y un minuto entre cada uno.
     #    Siempre el completo antes que los bloques, para que cada bloque lo pueda tener como video relacionado.
     minimo = datetime.now(timezone.utc) + timedelta(minutes=3)
-    dias = {"completo": 0, 1: 1, 2: 3, 3: 5} if MODO != "ahora" else {"completo": 0, 1: 0, 2: 0, 3: 0}
+    dias = {"completo": 0, 1: 1, 2: 3, 3: 4} if MODO != "ahora" else {"completo": 0, 1: 0, 2: 0, 3: 0}
     cuando = {}
     for k, clave in enumerate(["completo", 1, 2, 3]):
         cuando[clave] = max(CUANDO + timedelta(days=dias[clave]), minimo) + timedelta(minutes=k if MODO == "ahora" else 0)
