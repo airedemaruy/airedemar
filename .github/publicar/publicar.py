@@ -241,10 +241,19 @@ def main():
     # 4. Renovar el token de IG si tiene más de 30 días (vence a los 60)
     act = datos.get("ig_token_actualizado")
     if act and datetime.fromisoformat(act) < datetime.now(timezone.utc) - timedelta(days=30):
-        nuevo = ig("GET", "refresh_access_token", ig_token, params={"grant_type": "ig_refresh_token"}).get("access_token")
-        if nuevo:
-            rpc("pub_guardar_credenciales", p_ig_token=nuevo)
-            log("Token de Instagram renovado")
+        # Este endpoint no lleva versión y pide el token como parámetro (con el header da "access_token is required").
+        # Si falla, la nota ya está publicada: se avisa en el registro y no se la marca con error.
+        try:
+            r = requests.get("https://graph.instagram.com/refresh_access_token", timeout=60,
+                             params={"grant_type": "ig_refresh_token", "access_token": ig_token})
+            nuevo = r.json().get("access_token") if r.ok else None
+            if nuevo:
+                rpc("pub_guardar_credenciales", p_ig_token=nuevo)
+                log("Token de Instagram renovado")
+            else:
+                log("No se pudo renovar el token de Instagram")
+        except Exception:
+            log("No se pudo renovar el token de Instagram")
 
 
 if __name__ == "__main__":
