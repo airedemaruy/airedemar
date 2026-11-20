@@ -1,4 +1,6 @@
-"""Publica un programa en YouTube: el programa completo (los 3 bloques pegados) + los 3 bloques.
+"""Publica un programa en YouTube: el programa completo (los 3 bloques pegados) + la entrevista (B2) y, si se
+tilda en la tarjeta (sube_b3), el B3 como video propio. El B1 no se sube suelto (Juandi, 2026-11-20: casi no se
+veía; "B1, B2 y B3 no le aportan nada a la comunidad"): los títulos llevan el nombre del entrevistado o el tema.
 
 Corre en GitHub Actions (workflow programa.yml). Modos:
 - sabado: (sábado 14:00) busca los bloques finales en CANAL ONCE, sube lo que falte, arma el completo,
@@ -6,9 +8,9 @@ Corre en GitHub Actions (workflow programa.yml). Modos:
 - aplicar: (domingo 18:30, o botón de la app) aplica títulos y descripciones de la tarjeta y suma capítulos
   automáticos (sacados de los subtítulos de YouTube) a las descripciones que no los tengan.
 - ahora: (botón de la app) hace todo y publica ya.
-Semana (19:00): completo el domingo, B1 el lunes, B2 el miércoles, B3 el jueves; los recaps (Reel + Short, desde
-Informes) salen: B1 (ping pong) el lunes, B2 el viernes, B3 el sábado. El martes queda para un rescate. Así cada pieza sale después de la que tiene como
-video relacionado: bloques → completo, Shorts → su bloque. Los videos quedan privados con publicación programada (la app no está
+Semana (19:00): completo el domingo, entrevista (B2) el miércoles, B3 (si se sube) el jueves; los recaps (Reel + Short,
+desde Informes) salen: ping pong el lunes, B2 el viernes, B3 el sábado. El martes queda para un rescate. Así cada pieza sale
+después de la que tiene como video relacionado: entrevista → completo, Shorts → su video largo. Los videos quedan privados con publicación programada (la app no está
 auditada por Google, así que no se puede pasar a público directo).
 Repo público: no imprimir tokens, links ni IDs de Drive.
 """
@@ -75,12 +77,6 @@ def a_seg(t):
     return sum(v * 60 ** i for i, v in enumerate(reversed(partes)))
 
 
-def orden(titulo):
-    """Posición en la lista: programa más nuevo primero; dentro de cada uno, completo, B1, B2, B3."""
-    m = re.match(r"Aire de Mar 2026 #(\d+)(?: B(\d)| - Programa completo)", titulo or "")
-    return (-int(m.group(1)), int(m.group(2) or 0)) if m else None
-
-
 def seg_iso(d):
     """Duración ISO de YouTube en segundos. Recién subido y procesando, YouTube devuelve "P0D": 0."""
     m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", d or "")
@@ -115,8 +111,10 @@ def primera(filas, patron, desde=0):
 
 
 def tema(titulo, quitar):
-    """Lo que viene después del prefijo "Aire de Mar 2026 #N BX" en el título, sin el invitado."""
+    """El tema del título: lo que va después de "Aire de Mar 2026 #N BX - " (viejos) o antes de " | Aire de Mar" (nuevos), sin el invitado."""
     partes = [x.strip() for x in (titulo or "").split(" - ")[1:] if x.strip()]
+    if not partes and " | " in (titulo or "") and not titulo.startswith("Aire de Mar"):
+        partes = [titulo.split(" | ")[0].strip()]   # títulos nuevos: "Tema | Aire de Mar"
     partes = [x for x in partes if x.lower() != (quitar or "").lower()]
     return partes[-1] if partes else ""
 
@@ -183,7 +181,7 @@ def mail_floppy(gmail, p, agenda, videos, cuando):
     filas = []
     for vid, titulo, desc, clave in videos:
         t = cuando[clave].astimezone(UY)
-        nombre = "PROGRAMA COMPLETO" if clave == "completo" else f"BLOQUE {clave}"
+        nombre = {"completo": "PROGRAMA COMPLETO", 2: "ENTREVISTA (B2)", 3: "B3"}[clave]
         resumen = " ".join((desc or "").split("Capítulos:")[0].split())
         filas.append(f"""▶ {nombre} — {["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][t.weekday()]} {t:%d/%m} a las {t:%H:%M}
    Título: {titulo}
@@ -192,7 +190,7 @@ def mail_floppy(gmail, p, agenda, videos, cuando):
     detalle = (chr(10) * 2).join(filas)
     cuerpo = f"""Hola Flor!
 
-Ya están en YouTube (privados) el programa completo y los 3 bloques del #{p['numero']} ({p['invitado'] or 'sin invitado cargado'}). Así van a salir:
+Ya están en YouTube (privados) los videos del #{p['numero']} ({p['invitado'] or 'sin invitado cargado'}). Así van a salir:
 
 {detalle}
 
@@ -234,14 +232,15 @@ def main():
     creds = Credentials.from_authorized_user_info(json.loads(os.environ["GOOGLE_TOKEN"]))
     creds.refresh(Request())
     yt = build("youtube", "v3", credentials=creds)
+    drive = build("drive", "v3", credentials=creds)
+    SUBE = [2] + ([3] if p.get("sube_b3") else [])   # bloques que van a YouTube como video propio (el B1 nunca)
     ids = {b: id_yt(p[f"yt_b{b}"]) for b in (1, 2, 3)}
     id_comp = id_yt(p["yt_completo"])
 
     rutas = {}
     # 1. Subidas que falten (bloques desde CANAL ONCE y el completo)
-    if not all(ids.values()) or not id_comp:
+    if not all(ids[b] for b in SUBE) or not id_comp:
         avisar(pub_progreso=10, pub_detalle="Buscando los bloques en la carpeta CANAL ONCE…")
-        drive = build("drive", "v3", credentials=creds)
         del_prog = re.compile(rf"(?:\bp\s*|#\s*|\badm\s*){n}\b", re.I)   # la carpeta puede decir "P34", "#34" o "ADM 34"
         canal = [f for f in drive.files().list(q=f"mimeType='{CARPETA}' and name contains 'once' and trashed=false",
                                               fields="files(id,name)", pageSize=100).execute()["files"]
@@ -256,7 +255,9 @@ def main():
                 bloques[int(m.group(1))] = f["id"]
         if sorted(bloques) != [1, 2, 3]:
             raise RuntimeError(f"En CANAL ONCE del #{n} esperaba los bloques 1, 2 y 3 y encontré {sorted(bloques) or 'ninguno'}")
-        avisar(**{f"link_b{b}": f"https://drive.google.com/file/d/{bloques[b]}/view" for b in bloques})
+        links = {f"link_b{b}": f"https://drive.google.com/file/d/{bloques[b]}/view" for b in bloques}
+        avisar(**links)
+        p.update(links)
         for b in (1, 2, 3):
             rutas[b] = f"/tmp/b{b}.mp4"
             with open(rutas[b], "wb") as fh:
@@ -265,10 +266,10 @@ def main():
                 while not listo:
                     _, listo = baja.next_chunk()
         log("Bloques bajados de Drive")
-        avisar(pub_progreso=20, pub_detalle="Subiendo los bloques a YouTube…")
-        for b in (1, 2, 3):
+        avisar(pub_progreso=20, pub_detalle="Subiendo la entrevista a YouTube…")
+        for b in SUBE:
             if not ids[b]:
-                ids[b] = subir(yt, rutas[b], f"Aire de Mar 2026 #{n} B{b}")
+                ids[b] = subir(yt, rutas[b], (p[f"titulo_b{b}"] or f"Aire de Mar #{n} B{b}")[:100])
                 avisar(**{f"yt_b{b}": f"https://youtu.be/{ids[b]}"})
                 log(f"B{b} subido")
         if not id_comp:
@@ -289,48 +290,49 @@ def main():
             if abs(final - esperado) > 2:
                 raise RuntimeError(f"El programa completo dura {final:.0f}s y debería durar {esperado:.0f}s")
             avisar(pub_progreso=60, pub_detalle="Subiendo el programa completo…")
-            id_comp = subir(yt, "/tmp/completo.mp4", f"Aire de Mar 2026 #{n} - Programa completo")
+            id_comp = subir(yt, "/tmp/completo.mp4", (p["titulo_completo"] or f"Aire de Mar #{n} (programa completo)")[:100])
             avisar(yt_completo=f"https://youtu.be/{id_comp}")
             log(f"Programa completo subido ({mmss(final)})")
     avisar(pub_progreso=75, pub_detalle="Cargando títulos, descripciones y capítulos…")
 
-    # 2. Capítulos: los que escribió Floppy (o Claude) se respetan; si faltan, salen de los subtítulos de YouTube
-    durs = {v["id"]: seg_iso(v["contentDetails"]["duration"])
-            for v in yt.videos().list(part="contentDetails", id=",".join([ids[1], ids[2], ids[3]])).execute()["items"]}
-    for b in (1, 2, 3):  # recién subidos YouTube todavía no sabe la duración: se usa la del archivo bajado
-        if not durs.get(ids[b]) and b in rutas:
-            durs[ids[b]] = round(dur(rutas[b]))
-    descs, caps_bloque = {}, {}
+    # 2. Capítulos: los que escribió Floppy (o Claude) se respetan; si faltan, salen de los subtítulos de YouTube.
+    #    Los del completo salen de sus propios subtítulos, partidos por la duración de cada bloque (del archivo
+    #    bajado o, el domingo, de los datos del video en Drive).
+    durs = {}
     for b in (1, 2, 3):
+        if b in rutas:
+            durs[b] = round(dur(rutas[b]))
+            continue
+        m = re.search(r"/d/([\w-]+)", p[f"link_b{b}"] or "")
+        if m:
+            meta = drive.files().get(fileId=m.group(1), fields="videoMediaMetadata").execute().get("videoMediaMetadata", {})
+            durs[b] = round(int(meta.get("durationMillis", 0)) / 1000)
+    descs = {}
+    for b in SUBE:
         desc = p[f"desc_b{b}"]
-        caps = capitulos_de_texto(desc)
-        if not caps:
+        if not capitulos_de_texto(desc):
             filas = subtitulos(yt, ids[b])
-            caps = capitulos_auto(b, filas, p) if filas else [(0, "")]
-            desc = con_capitulos(desc, caps)
-        caps_bloque[b] = caps
+            desc = con_capitulos(desc, capitulos_auto(b, filas, p) if filas else [])
         descs[b] = desc or PIE
     desc_comp = p["desc_completo"]
-    if not capitulos_de_texto(desc_comp):
-        caps, offset = [], 0
+    if not capitulos_de_texto(desc_comp) and all(durs.get(b) for b in (1, 2, 3)):
+        filas, caps, offset = subtitulos(yt, id_comp), [], 0
         for b in (1, 2, 3):
-            caps += [(t + offset, nombre or f"Bloque {b}") for t, nombre in caps_bloque[b]]
-            offset += durs.get(ids[b], 0)
+            del_bloque = [(t - offset, x) for t, x in filas if offset <= t < offset + durs[b]]
+            caps += [(t + offset, nombre or f"Bloque {b}") for t, nombre in (capitulos_auto(b, del_bloque, p) if del_bloque else [(0, "")])]
+            offset += durs[b]
         desc_comp = con_capitulos(desc_comp, caps)
     descs["completo"] = desc_comp or PIE
 
     # 3. Títulos, descripciones y publicación programada.
-    #    Semana: completo el domingo, B1 el lunes, B2 el miércoles y B3 el jueves (los recaps salen
-    #    lunes, viernes y sábado desde Informes). "ahora": todo ya, completo primero y un minuto entre cada uno.
-    #    Siempre el completo antes que los bloques, para que cada bloque lo pueda tener como video relacionado.
+    #    Semana: completo el domingo, entrevista el miércoles y B3 (si se sube) el jueves. "ahora": todo ya, completo
+    #    primero y un minuto entre cada uno. Siempre el completo antes, para que la entrevista lo tenga como video relacionado.
     minimo = datetime.now(timezone.utc) + timedelta(minutes=3)
-    dias = {"completo": 0, 1: 1, 2: 3, 3: 4} if MODO != "ahora" else {"completo": 0, 1: 0, 2: 0, 3: 0}
-    cuando = {}
-    for k, clave in enumerate(["completo", 1, 2, 3]):
-        cuando[clave] = max(CUANDO + timedelta(days=dias[clave]), minimo) + timedelta(minutes=k if MODO == "ahora" else 0)
+    dias = {"completo": 0, 2: 3, 3: 4} if MODO != "ahora" else {"completo": 0, 2: 0, 3: 0}
+    cuando = {clave: max(CUANDO + timedelta(days=dias[clave]), minimo) + timedelta(minutes=k if MODO == "ahora" else 0)
+              for k, clave in enumerate(["completo"] + SUBE)}
     programados = 0
-    videos = [(id_comp, p["titulo_completo"], descs["completo"], "completo"), (ids[1], p["titulo_b1"], descs[1], 1),
-              (ids[2], p["titulo_b2"], descs[2], 2), (ids[3], p["titulo_b3"], descs[3], 3)]
+    videos = [(id_comp, p["titulo_completo"], descs["completo"], "completo")] + [(ids[b], p[f"titulo_b{b}"], descs[b], b) for b in SUBE]
     for vid, titulo, desc, clave in videos:
         if not titulo:
             raise RuntimeError("Faltan títulos en la tarjeta del programa")
@@ -345,29 +347,26 @@ def main():
             programados += 1
         yt.videos().update(part=partes, body=cuerpo).execute()
     DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
-    agenda = ", ".join(f"{'completo' if c == 'completo' else 'B' + str(c)} {DIAS[t.astimezone(UY).weekday()]} {t.astimezone(UY):%d/%m %H:%M}"
-                       for c, t in cuando.items())
+    NOMBRE = {"completo": "completo", 2: "entrevista", 3: "B3"}
+    agenda = ", ".join(f"{NOMBRE[c]} {DIAS[t.astimezone(UY).weekday()]} {t.astimezone(UY):%d/%m %H:%M}" for c, t in cuando.items())
     log(f"Títulos y descripciones cargados. Agenda: {agenda}")
     vinculadas = rpc("pub_vincular_notas", p_programa=PROG_ID)
     if vinculadas:
-        log(f"{vinculadas} nota(s) recibieron el link de su bloque")
+        log(f"{vinculadas} nota(s) recibieron el link de su video")
 
-    # 4. Lista de la temporada, cada uno en su lugar (una sola lectura: YouTube tarda en reflejar cada inserción)
+    # 4. Lista de la temporada: el programa nuevo va arriba de todo (completo, entrevista y B3).
     items, tok = [], None
     while True:
-        r = yt.playlistItems().list(part="snippet,contentDetails", playlistId=LISTA, maxResults=50, pageToken=tok).execute()
+        r = yt.playlistItems().list(part="contentDetails", playlistId=LISTA, maxResults=50, pageToken=tok).execute()
         items += r["items"]
         tok = r.get("nextPageToken")
         if not tok:
             break
-    en_lista = [(i["contentDetails"]["videoId"], orden(i["snippet"]["title"])) for i in items]
-    for vid, titulo, _, _ in sorted(videos, key=lambda v: orden(v[1]) or (0, 0)):
-        if vid in {v for v, _ in en_lista}:
-            continue
-        pos = sum(1 for _, o in en_lista if o and o < orden(titulo))
-        yt.playlistItems().insert(part="snippet", body={"snippet": {"playlistId": LISTA, "position": pos,
-                                  "resourceId": {"kind": "youtube#video", "videoId": vid}}}).execute()
-        en_lista.insert(pos, (vid, orden(titulo)))
+    en_lista = {i["contentDetails"]["videoId"] for i in items}
+    for pos, (vid, _, _, _) in enumerate(videos):
+        if vid not in en_lista:
+            yt.playlistItems().insert(part="snippet", body={"snippet": {"playlistId": LISTA, "position": pos,
+                                      "resourceId": {"kind": "youtube#video", "videoId": vid}}}).execute()
     log("Lista de la temporada actualizada")
 
     # 5. Aviso a Floppy (solo la revisión del sábado)
@@ -385,7 +384,7 @@ def main():
         estado, detalle = "programada", f"Programado en YouTube: {agenda}."
     avisar(pub_estado=estado, pub_progreso=100, yt=True, etapa=4 if estado == "publicada" else p["etapa"],
            pub_detalle=detalle + (" Mail enviado a Floppy." if MODO == "sabado" else "")
-           + " Falta asignar el completo como video relacionado de cada bloque (en Studio).")
+           + " Falta asignar el completo como video relacionado de la entrevista (en Studio).")
     log("Listo")
 
 

@@ -226,7 +226,8 @@ function renderProgramas() {
     }).join('')}</div>`;
 }
 
-/* ---------- programa en YouTube: completo + 3 bloques (lo publica GitHub Actions; lo disparan Supabase y estos botones) ---------- */
+/* ---------- programa en YouTube: completo + entrevista (B2) + B3 si se tilda (lo publica GitHub Actions; lo disparan Supabase y estos botones).
+   El B1 no se sube suelto (Juandi, 2026-11-20): los títulos llevan el nombre del entrevistado o el tema, no "B1/B2/B3". ---------- */
 const BLOQUES = [1, 2, 3];
 const faltanRelacionados = (p) => !!idYoutube(p.yt_completo) && BLOQUES.some(b => idYoutube(p[`yt_b${b}`]) && !p[`relacionado_b${b}`]);
 const clavePubProg = (p) => `${p.pub_progreso}|${p.pub_estado}|${p.pub_detalle}`;
@@ -276,21 +277,21 @@ function abrirPrograma(id) {
     <label class="f"><span>Invitado</span><input id="p-invitado" value="${esc(p?.invitado)}"></label>
     <div class="f"><span>Etapa</span><div class="opciones">${ETAPAS_PROG.map((e, i) => `<button type="button" class="op" data-etapa-prog="${i}" aria-pressed="${(p?.etapa ?? 0) === i}">${e}</button>`).join('')}</div></div>
     <label class="f"><span>Carpeta (dentro de Programas\\2026)</span><input id="p-carpeta" value="${esc(p?.carpeta)}"></label>
-    <div class="f"><span>Publicado</span><div class="checks"><label><input type="checkbox" id="p-yt" ${p?.yt ? 'checked' : ''}> YouTube (los 3 bloques)</label></div></div>
+    <div class="f"><span>Publicado</span><div class="checks"><label><input type="checkbox" id="p-yt" ${p?.yt ? 'checked' : ''}> YouTube</label></div></div>
     <label class="f"><span>Pendientes (uno por línea)</span><textarea id="p-pendientes">${esc(p?.pendientes)}</textarea></label>`)}
     ${seccion(2, 'Bloques finales', 'se completan solos el sábado 14:00 desde CANAL ONCE', BLOQUES.map(b => `
       <label class="f"><span>Bloque ${b}</span><input id="p-link-b${b}" type="url" value="${esc(p?.[`link_b${b}`])}" placeholder="https://drive.google.com/…"></label>`).join(''))}
     ${seccion(3, 'YouTube', 'títulos y descripciones antes del domingo 18:30', `
-      <div class="nota">El sábado 14:00 se suben solos el completo y los 3 bloques y le llega un mail a Floppy. Salen a las 19:00: <b>completo el domingo, B1 el lunes, B2 el miércoles y B3 el jueves</b> (los recaps, desde Informes: ping pong del B1 el lunes, B2 el viernes y B3 el sábado; el martes queda para un rescate). El domingo 18:30 se aplica lo que esté cargado acá. Si un título queda vacío, sale uno provisorio.</div>
-      ${texto('completo', 'Programa completo · título', `Aire de Mar 2026 #${n} - Programa completo | ${inv}`)}
-      ${texto('b1', 'Bloque 1 · título', `Aire de Mar 2026 #${n} B1 - ${inv} - tema de la nota`)}
-      ${texto('b2', 'Bloque 2 · título', `Aire de Mar 2026 #${n} B2 - ${inv} (Entrevista)`)}
-      ${texto('b3', 'Bloque 3 · título', `Aire de Mar 2026 #${n} B3 - tema del informe especial`)}
-      <div class="nota">${[linkYt(p?.yt_completo, 'Completo'), ...BLOQUES.map(b => linkYt(p?.[`yt_b${b}`], 'B' + b))].filter(Boolean).join(' · ')}</div>
+      <div class="nota">El sábado 14:00 se suben solos el programa completo y la entrevista (B2) y le llega un mail a Floppy. El B1 no se sube suelto. Salen a las 19:00: <b>completo el domingo, entrevista el miércoles y B3 el jueves (solo si está tildado)</b>. Los recaps, desde Informes: ping pong el lunes, B2 el viernes y B3 el sábado; el martes queda para un rescate. Títulos con el nombre del entrevistado o el tema, sin "B1/B2/B3". El domingo 18:30 se aplica lo que esté cargado acá. Si un título queda vacío, sale uno provisorio.</div>
+      ${texto('completo', 'Programa completo · título', `${inv} | Aire de Mar #${n} (programa completo)`)}
+      ${texto('b2', 'Entrevista (B2) · título', `${inv}, a qué se dedica | Aire de Mar`)}
+      <div class="checks"><label><input type="checkbox" id="p-sube-b3" ${p?.sube_b3 ? 'checked' : ''}> Subir también el B3 como video propio (solo si es una nota con un tema que alguien buscaría)</label></div>
+      ${texto('b3', 'B3 · título (si se sube)', 'Tema del informe, como se buscaría | Aire de Mar')}
+      <div class="nota">${[linkYt(p?.yt_completo, 'Completo'), ...BLOQUES.map(b => linkYt(p?.[`yt_b${b}`], b === 2 ? 'Entrevista' : 'B' + b))].filter(Boolean).join(' · ')}</div>
       ${p ? `<div class="publicar" id="p-pub" data-clave="${esc(clavePubProg(p))}">${bloquePubProg(p)}</div>` : ''}`)}
-    ${seccion(4, 'Videos relacionados', 'cada bloque lleva al completo (se asigna a mano en Studio)', `
-      <div class="checks" style="flex-direction:column;align-items:flex-start">${BLOQUES.map(b => `
-        <label><input type="checkbox" id="p-rel-b${b}" ${p?.[`relacionado_b${b}`] ? 'checked' : ''}> B${b} tiene al programa completo como video relacionado
+    ${seccion(4, 'Videos relacionados', 'la entrevista lleva al completo (se asigna a mano en Studio)', `
+      <div class="checks" style="flex-direction:column;align-items:flex-start">${BLOQUES.filter(b => b === 2 || idYoutube(p?.[`yt_b${b}`])).map(b => `
+        <label><input type="checkbox" id="p-rel-b${b}" ${p?.[`relacionado_b${b}`] ? 'checked' : ''}> ${b === 2 ? 'La entrevista' : 'B' + b} tiene al programa completo como video relacionado
         ${idYoutube(p?.[`yt_b${b}`]) ? `· <a href="https://studio.youtube.com/video/${esc(idYoutube(p[`yt_b${b}`]))}/edit" target="_blank" rel="noopener">abrir en Studio ↗</a>` : ''}</label>`).join('')}</div>`)}
     <div class="acciones" style="justify-content:space-between">
       <span id="p-borrar-zona">${p ? '<button type="button" class="btn danger" id="p-borrar">Borrar</button>' : ''}</span>
@@ -310,7 +311,7 @@ $('#f-programa').addEventListener('click', async (ev) => {
   if (t.id === 'p-borrar') { $('#p-borrar-zona').innerHTML = '<span class="acciones"><span class="nota">¿Borrar este programa?</span><button type="button" class="btn danger" id="p-si">Sí, borrar</button><button type="button" class="btn quiet" id="p-no">No</button></span>'; }
   if (t.id === 'p-no') $('#p-borrar-zona').innerHTML = '<button type="button" class="btn danger" id="p-borrar">Borrar</button>';
   if (t.id === 'p-si') { if (await escribir(sb.from('programas').delete().eq('id', f.dataset.id), 'Programa borrado.')) { $('#d-programa').close(); await cargar('programas'); render(); } }
-  if (t.id === 'p-publicar-ahora') { $('#p-pub-zona').innerHTML = '<span class="nota">¿Publicar ya en YouTube el completo y los 3 bloques?</span><button type="button" class="btn" id="p-publicar-si">Sí, publicar</button><button type="button" class="btn quiet" id="p-publicar-no">No</button>'; }
+  if (t.id === 'p-publicar-ahora') { $('#p-pub-zona').innerHTML = '<span class="nota">¿Publicar ya en YouTube el completo y la entrevista?</span><button type="button" class="btn" id="p-publicar-si">Sí, publicar</button><button type="button" class="btn quiet" id="p-publicar-no">No</button>'; }
   if (t.id === 'p-publicar-no') { const p = S.programas.find(x => x.id === f.dataset.id); $('#p-pub').innerHTML = bloquePubProg(p); }
   if (t.id === 'p-aplicar' || t.id === 'p-publicar-si') {
     if (!(await guardarPrograma())) return;
@@ -324,9 +325,10 @@ function leerFormPrograma() {
   const body = {
     numero: Number($('#p-numero').value) || null, fecha: $('#p-fecha').value || null, invitado: val('#p-invitado'),
     etapa: Number(f.dataset.etapa || 0), carpeta: val('#p-carpeta'), yt: $('#p-yt').checked, pendientes: val('#p-pendientes'),
+    sube_b3: $('#p-sube-b3').checked,
   };
-  for (const c of ['completo', 'b1', 'b2', 'b3']) { body[`titulo_${c}`] = val(`#p-titulo-${c}`); body[`desc_${c}`] = val(`#p-desc-${c}`); }
-  for (const b of BLOQUES) { body[`link_b${b}`] = val(`#p-link-b${b}`); body[`relacionado_b${b}`] = $(`#p-rel-b${b}`).checked; }
+  for (const c of ['completo', 'b2', 'b3']) { body[`titulo_${c}`] = val(`#p-titulo-${c}`); body[`desc_${c}`] = val(`#p-desc-${c}`); }
+  for (const b of BLOQUES) { body[`link_b${b}`] = val(`#p-link-b${b}`); body[`relacionado_b${b}`] = $(`#p-rel-b${b}`)?.checked ?? false; }
   return body;
 }
 let inicialPrograma = null;  // misma idea que en las notas: guardar solo lo que se cambió (el proceso del sábado carga links mientras tanto)
@@ -362,10 +364,10 @@ const EDITOR_HORIZONTAL = 'Agencia Boomer';
 const EDITOR_VERTICAL = 'Juandi';
 const HINTS_NOTA = ['Falta el link del crudo', `${EDITOR_HORIZONTAL} arma la nota completa`, `${EDITOR_VERTICAL} hace el recorte vertical`, 'El coordinador completa textos, aprueba y pone fecha', 'Lista para salir en la fecha', ''];
 const HORA_PUBLICAR = '19:00';
-/* Semana de un programa (días después del domingo de emisión): en YouTube el completo, B1, B2, B3;
+/* Semana de un programa (días después del domingo de emisión): en YouTube el completo, la entrevista (B2) y el B3 si se tilda;
    recaps (Reel + Short): el del B1 (ping pong) el mismo lunes, el del B2 el viernes y el del B3 el sábado,
    para que el invitado no salga dos días seguidos en IG. El martes queda para un rescate. */
-const DIA_YT = { completo: 0, 1: 1, 2: 3, 3: 4 };
+const DIA_YT = { completo: 0, 2: 3, 3: 4 };   // el B1 ya no se sube suelto
 const DIA_RECAP = { 1: 1, 2: 5, 3: 6 };
 function diaMas(fecha, dias) { const d = parse(fecha); d.setDate(d.getDate() + dias); return iso(d); }
 const programa = (id) => S.programas.find(p => p.id === id);
@@ -450,7 +452,7 @@ function renderCalendario() {
   const sin = lista.filter(n => !n.publicar_el && etapaNota(n) < 5);
   const progDel = (s) => S.programas.find(p => p.fecha === s);
   const ytDel = (s) => S.programas.flatMap(p => p.fecha ? Object.entries(DIA_YT).filter(([, d]) => diaMas(p.fecha, d) === s)
-    .map(([c]) => `YT · #${p.numero} ${c === 'completo' ? 'completo' : 'B' + c}`) : []);
+    .filter(([c]) => c !== '3' || p.sube_b3).map(([c]) => `YT · #${p.numero} ${c === 'completo' ? 'completo' : c === '2' ? 'entrevista' : 'B3'}`) : []);
   let cuerpo;
   if (clasico) {
     const offset = (mes.getDay() + 6) % 7, total = Math.ceil((offset + new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate()) / 7) * 7;
