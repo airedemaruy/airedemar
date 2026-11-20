@@ -34,6 +34,8 @@ CUANDO = datetime.fromisoformat(os.environ["CUANDO"].replace("Z", "+00:00"))
 MODO = os.environ.get("MODO") or "ahora"
 SECRETO = os.environ["PUB_SECRETO"]
 LISTA = "PLBpp16n7GHdg"  # "Aire de Mar · Temporada 2026"
+LISTA_COMPLETOS = "PLcMn-4NMaMYI"    # "Programas completos · Aire de Mar": del más viejo al más nuevo (la reproducción sigue al próximo)
+LISTA_ENTREVISTAS = "PLUAFQ7G9Muyc"  # "Entrevistas · Aire de Mar": la más nueva arriba
 APP = "https://airedemaruy.github.io/airedemar/equipo/#programas"
 FLOPPY = "florsagasti@gmail.com"
 JUANDI = "juandiegosagasti@gmail.com"   # en copia del mail del sábado y destinatario si falla
@@ -367,7 +369,38 @@ def main():
         if vid not in en_lista:
             yt.playlistItems().insert(part="snippet", body={"snippet": {"playlistId": LISTA, "position": pos,
                                       "resourceId": {"kind": "youtube#video", "videoId": vid}}}).execute()
-    log("Lista de la temporada actualizada")
+    def en(lista):
+        ids_, tok_ = set(), None
+        while True:
+            r_ = yt.playlistItems().list(part="contentDetails", playlistId=lista, maxResults=50, pageToken=tok_).execute()
+            ids_ |= {i["contentDetails"]["videoId"] for i in r_["items"]}
+            tok_ = r_.get("nextPageToken")
+            if not tok_:
+                return ids_
+    if id_comp not in en(LISTA_COMPLETOS):   # al final: la lista va en orden de emisión
+        yt.playlistItems().insert(part="snippet", body={"snippet": {"playlistId": LISTA_COMPLETOS,
+                                  "resourceId": {"kind": "youtube#video", "videoId": id_comp}}}).execute()
+    if ids[2] not in en(LISTA_ENTREVISTAS):  # arriba de todo: la más nueva primero
+        yt.playlistItems().insert(part="snippet", body={"snippet": {"playlistId": LISTA_ENTREVISTAS, "position": 0,
+                                  "resourceId": {"kind": "youtube#video", "videoId": ids[2]}}}).execute()
+    log("Listas actualizadas (temporada, programas completos y entrevistas)")
+
+    # 4b. El programa anterior ofrece este: "▶️ Siguiente programa" en su descripción (la pantalla final la pone la tarea de Studio)
+    try:
+        ant = rpc("pub_programa", p_id=f"p{n - 1}")
+        id_ant = id_yt((ant or {}).get("yt_completo"))
+        if id_ant:
+            s = yt.videos().list(part="snippet", id=id_ant).execute()["items"][0]["snippet"]
+            if "Siguiente programa" not in s.get("description", ""):
+                titulo_nuevo = p["titulo_completo"] or f"Aire de Mar #{n}"
+                linea = f"▶️ Siguiente programa: {titulo_nuevo}\nhttps://youtu.be/{id_comp}"
+                cuerpo_ant = s.get("description", "").replace(PIE, "").strip()
+                s["description"] = "\n\n".join(x for x in [cuerpo_ant, linea, PIE] if x)
+                yt.videos().update(part="snippet", body={"id": id_ant, "snippet": {k: s[k] for k in
+                                   ("title", "description", "categoryId", "defaultLanguage", "defaultAudioLanguage", "tags") if k in s}}).execute()
+                log(f"El #{n - 1} ahora ofrece el #{n} en la descripción")
+    except Exception as e:
+        log(f"No se pudo sumar el siguiente programa al #{n - 1}: {str(e)[:120]}")
 
     # 5. Aviso a Floppy (solo la revisión del sábado)
     if MODO == "sabado":
