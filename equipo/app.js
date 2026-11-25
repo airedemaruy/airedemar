@@ -599,6 +599,7 @@ function abrirNota(id, paso) {
         ${n?.link_ig ? '<span class="nota">El Reel ya está publicado: Instagram queda destildado.</span>' : ''}</div></div>
       <label class="f"><span>Copy de IG <span id="n-copy-cuenta"></span></span><textarea id="n-copy" rows="6">${esc(n?.copy_ig)}</textarea></label>
       <label class="f"><span>Collabs de IG (hasta 3 usuarios, sin @; tienen que ser cuentas públicas y aceptar la invitación)</span><input id="n-collabs" value="${esc(n?.colaboradores)}" placeholder="afavordelmar_, ipereyrarivero" autocapitalize="none" spellcheck="false"></label>
+      <label class="f"><span>Etiquetados en el Reel (sin @, separados por coma; para quien aparece unos segundos: la collab es para el protagonista)</span><input id="n-etiquetados" value="${esc(n?.etiquetados)}" placeholder="aubodyboarding, emi.nievess_" autocapitalize="none" spellcheck="false"></label>
       <div><button type="button" class="btn quiet small" id="n-desde-copy">Completar YouTube desde el copy</button></div>
       <label class="f"><span>Título de YouTube</span><input id="n-yt-titulo" maxlength="100" value="${esc(n?.yt_titulo)}"></label>
       <label class="f"><span>Descripción de YouTube</span><textarea id="n-yt-desc" rows="5">${esc(n?.yt_descripcion)}</textarea></label>`)}
@@ -709,6 +710,7 @@ function leerFormNota() {
     editor: $('#n-editor').value, link_completa: val('#n-completa'), editor_vertical: $('#n-editor-v').value, link_vertical: val('#n-vertical'), link_portada: val('#n-portada'),
     programa_id: $('#n-programa').value || null, bloque: Number($('#n-bloque').value) || null, copy_ig: val('#n-copy'), yt_titulo: val('#n-yt-titulo'), yt_descripcion: val('#n-yt-desc'),
     colaboradores: val('#n-collabs').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
+    etiquetados: val('#n-etiquetados').split(/[,\s]+/).map(u => u.replace(/^@/, '')).filter(Boolean).join(', '),
     publicar_el: fechaHora($('#n-dia').value, $('#n-hora').value),
     link_ig: val('#n-link-ig'), link_yt_short: val('#n-link-short'), link_yt_completa: val('#n-link-ytc'), pendientes: val('#n-pendientes'),
     pub_ig: $('#n-pub-ig').checked, pub_yt: $('#n-pub-yt').checked, reel_prueba: $('#n-prueba').checked,
@@ -719,6 +721,7 @@ function errorNota(body) {
   if (!body.titulo) return 'Poné un rótulo.';
   if (body.copy_ig.length > 2200) return 'El copy de IG pasa los 2200 caracteres.';
   if (body.colaboradores.split(', ').filter(Boolean).length > 3) return 'Instagram permite hasta 3 collabs.';
+  if (body.etiquetados.split(', ').filter(Boolean).length > 20) return 'Instagram permite hasta 20 etiquetados.';
   return '';
 }
 /* Al guardar se mandan solo los campos que la persona cambió desde que abrió la ventana: así no se pisa

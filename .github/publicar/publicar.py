@@ -197,6 +197,26 @@ def main():
                 datos_reel["trial_params"] = json.dumps({"graduation_strategy": "MANUAL"})
                 collabs = []
                 log("Reel de prueba (sin collabs)")
+            # Etiquetados: quien aparece unos segundos (organizadores, campeones). La collab es para el protagonista (Juandi, 2026-11-25).
+            # Se prueba primero con todas; si Instagram rechaza alguna (privada o inexistente), se etiqueta solo a las que acepta.
+            etiq = [u.lstrip("@") for u in re.split(r"[,\s]+", nota.get("etiquetados") or "") if u.strip("@")][:20]
+            aviso_etiq = ""
+            if etiq:
+                try:
+                    ig("POST", f"{uid}/media", ig_token, data={**datos_reel, "user_tags": json.dumps([{"username": u} for u in etiq])})
+                except RuntimeError:
+                    buenos = []
+                    for u in etiq:
+                        try:
+                            ig("POST", f"{uid}/media", ig_token, data={**datos_reel, "user_tags": json.dumps([{"username": u}])})
+                            buenos.append(u)
+                        except RuntimeError:
+                            pass
+                    aviso_etiq = f" No se pudo etiquetar a: {', '.join('@' + u for u in etiq if u not in buenos)} (privadas o inexistentes: hacelo a mano desde el Reel)."
+                    etiq = buenos
+                if etiq:
+                    datos_reel["user_tags"] = json.dumps([{"username": u} for u in etiq])
+                log(f"Etiquetados en el Reel: {len(etiq)}" + (" (alguna cuenta no se pudo)" if aviso_etiq else ""))
             sin_invitar = []; etiquetados = False
             try:
                 cont = ig("POST", f"{uid}/media", ig_token, data={**datos_reel, **({"collaborators": json.dumps(collabs)} if collabs else {})})["id"]
@@ -214,7 +234,7 @@ def main():
                 con_validos = {**datos_reel, **({"collaborators": json.dumps(validos)} if validos else {})}
                 etiquetados = False
                 try:   # a los que no se pueden invitar como collab, al menos se los etiqueta (Juandi, 2026-10-31)
-                    cont = ig("POST", f"{uid}/media", ig_token, data={**con_validos, "user_tags": json.dumps([{"username": u} for u in sin_invitar])})["id"]
+                    cont = ig("POST", f"{uid}/media", ig_token, data={**con_validos, "user_tags": json.dumps([{"username": u} for u in etiq + sin_invitar])})["id"]
                     etiquetados = True
                 except RuntimeError:
                     cont = ig("POST", f"{uid}/media", ig_token, data=con_validos)["id"]
@@ -232,7 +252,7 @@ def main():
             log("Instagram procesó el video")
             if ENSAYO:
                 log("Ensayo: no se publica en Instagram")
-                avisar(pub_progreso=100, pub_detalle=f"Ensayo OK {datetime.now(UY):%d/%m %H:%M}: Drive, YouTube e Instagram respondieron bien. No se publicó nada.{aviso_collabs}")
+                avisar(pub_progreso=100, pub_detalle=f"Ensayo OK {datetime.now(UY):%d/%m %H:%M}: Drive, YouTube e Instagram respondieron bien. No se publicó nada.{aviso_collabs}{aviso_etiq}")
                 return
             espera = (CUANDO - datetime.now(timezone.utc)).total_seconds()
             avisar(pub_progreso=85, pub_detalle="Instagram procesó el video. Publicando…" if espera <= 0
@@ -243,7 +263,7 @@ def main():
             media = ig("POST", f"{uid}/media_publish", ig_token, data={"creation_id": cont})["id"]
             link = ig("GET", media, ig_token, params={"fields": "permalink"}).get("permalink", "")
             avisar(link_ig=link, pub_estado="publicada", pub_progreso=100,
-                   pub_detalle=f"Publicada el {datetime.now(UY):%d/%m %H:%M}." + (f" El Short sale en YouTube a las {publicar_yt.astimezone(UY):%H:%M}." if PUB_YT else "") + aviso_collabs)
+                   pub_detalle=f"Publicada el {datetime.now(UY):%d/%m %H:%M}." + (f" El Short sale en YouTube a las {publicar_yt.astimezone(UY):%H:%M}." if PUB_YT else "") + aviso_collabs + aviso_etiq)
             log("Instagram OK: publicado")
         finally:
             subprocess.run(["gh", "release", "delete", tag, "--repo", REPO, "--yes", "--cleanup-tag"], capture_output=True)
