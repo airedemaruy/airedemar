@@ -69,6 +69,22 @@ def ig(metodo, ruta, token, **kw):
     return data
 
 
+def etiquetas(nota):
+    """Etiquetas del Short: los hashtags del copy, los entrevistados y las fijas (2026-11-25: la tanda de octubre
+    las llevaba y la de noviembre no). YouTube acepta hasta 500 caracteres en total."""
+    tags = ["Aire de Mar", "Uruguay", "Punta del Este"]
+    tags += re.findall(r"#(\w+)", nota.get("copy_ig") or "")
+    for linea in (nota.get("entrevistados") or "").splitlines():
+        if "cobertura" not in linea:
+            tags += [n.strip() for n in re.split(r",| y ", re.sub(r"\(.*?\)", "", linea)) if n.strip()]
+    salida, largo = [], 0
+    for t in tags:
+        if t.lower() not in [s.lower() for s in salida] and t.lower() not in ("airedemar", "shorts") and largo + len(t) + 3 <= 480:
+            salida.append(t)
+            largo += len(t) + 3
+    return salida
+
+
 def id_drive(link):
     m = re.search(r"/d/([\w-]{20,})", link) or re.search(r"[?&]id=([\w-]{20,})", link)
     if not m:
@@ -141,7 +157,8 @@ def main():
         if not ENSAYO:
             estado["publishAt"] = publicar_yt.strftime("%Y-%m-%dT%H:%M:%SZ")
         cuerpo = {"snippet": {"title": nota["yt_titulo"][:100], "description": nota["yt_descripcion"] or nota["copy_ig"],
-                              "categoryId": "17", "defaultLanguage": "es"}, "status": estado}
+                              "categoryId": "17", "defaultLanguage": "es", "defaultAudioLanguage": "es",
+                              "tags": etiquetas(nota)}, "status": estado}
         if ENSAYO:
             # El ensayo no sube: cada subida gasta 1600 de las 10.000 unidades diarias de la API, aunque después se borre
             yt.channels().list(part="id", mine=True).execute()
